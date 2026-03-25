@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   FlatList,
   View,
@@ -13,6 +13,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 
+// Import new components
+import ButtonComponent from "../components/common/ButtonComponent";
+import AvatarComponent from "../components/common/AvatarComponent";
+import ChatItemComponent from "../components/list/ChatItemComponent";
+
 type RootStackParamList = {
   Chat: { user: any };
 };
@@ -21,6 +26,8 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Chat'>;
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState({ x: 0, y: 0, visible: false });
   const stories = [
     { id: "1", name: "Bạn A", avatar: "https://vienmoitruong5014.org.vn/wp-content/uploads/2023/03/anh-cho-con-de-thuong_022907461.jpg" },
     {
@@ -70,11 +77,16 @@ const HomeScreen = () => {
     item: { id: string; name: string; avatar: string };
   }) => (
     <TouchableOpacity className="items-center mr-4">
-      <View className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 p-0.5">
-        <Image
-          source={{ uri: item.avatar }}
-          className="w-15 h-15 rounded-full bg-white"
-        />
+      <View className="relative">
+        <View className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 p-0.5">
+          <View className="w-full h-full rounded-full bg-white p-0.5">
+            <AvatarComponent
+              source={{ uri: item.avatar }}
+              size="medium"
+              className="w-14 h-14"
+            />
+          </View>
+        </View>
       </View>
       <Text className="text-xs text-gray-600 mt-1 text-center" numberOfLines={1}>
         {item.name}
@@ -82,76 +94,53 @@ const HomeScreen = () => {
     </TouchableOpacity>
   );
 
+  const handleLongPress = (item: any, event: any) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setSelectedChat(item.id);
+    setShowMenu({ x: pageX, y: pageY, visible: true });
+  };
+
+  const handleMenuAction = (action: string, item: any) => {
+    switch (action) {
+      case 'pin':
+        // Handle pin logic
+        break;
+      case 'delete':
+        // Handle delete logic
+        break;
+      case 'mute':
+        // Handle mute logic
+        break;
+    }
+    setShowMenu({ x: 0, y: 0, visible: false });
+    setSelectedChat(null);
+  };
+
   const renderChatItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      className="flex-row items-center p-3 bg-white border-b border-gray-50"
-      onPress={() => navigation.navigate('Chat', { user: item })}
-    >
-      <View className="relative">
-        <Image
-          source={{ uri: item.avatar }}
-          className="w-12 h-12 rounded-full"
-        />
-        {item.online && (
-          <View className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
-        )}
-      </View>
-      <View className="flex-1 ml-3">
-        <View className="flex-row justify-between items-center">
-          <Text className="font-semibold text-base text-gray-900">{item.name}</Text>
-          <Text className="text-xs text-gray-500">{item.time}</Text>
-        </View>
-        <View className="flex-row items-center mt-1">
-          {item.pinned && <Ionicons name="push" size={12} color="#0068FF" className="mr-1" />}
-          <Text numberOfLines={1} className="text-gray-600 text-sm flex-1">
-            {item.typing ? "Đang nhập..." : item.lastMsg}
-          </Text>
-        </View>
-      </View>
-      {item.unread > 0 && (
-        <View className="bg-red-500 w-5 h-5 rounded-full justify-center items-center ml-2">
-          <Text className="text-white text-xs font-bold">
-            {item.unread}
-          </Text>
-        </View>
-      )}
-    </TouchableOpacity>
+    <ChatItemComponent
+      item={item}
+      onPress={(user) => navigation.navigate('Chat', { user })}
+      onLongPress={handleLongPress}
+    />
   );
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
-      {/* Zalo Header */}
-      <View className="bg-white px-4 py-2 border-b border-gray-100">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1">
-            {/* Logo Zalo */}
-            <View className="flex-row items-center">
-              <Image
-                source={{
-                  uri: "https://via.placeholder.com/80x30/0068FF/FFFFFF?text=Zalo",
-                }}
-                className="h-6 w-20"
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-        </View>
-        
-        {/* Search bar với icons */}
-        <View className="mt-2 flex-row items-center">
-          <View className="flex-1 bg-blue-50 rounded-full px-4 py-2.5 flex-row items-center mr-2">
-            <Ionicons name="search" size={18} color="#0068FF" className="mr-2" />
-            <TextInput
-              placeholder="Tìm kiếm tin nhắn, Zalo OA..."
-              className="flex-1 text-sm text-gray-700"
-              placeholderTextColor="gray"
-            />
-          </View>
-          <TouchableOpacity className="p-2">
-            <Ionicons name="qr-code-outline" size={20} color="#0068FF" />
+      {/* Header */}
+      <View className="bg-blue-500 px-4 py-5">
+        {/* Search bar */}
+        <View className="bg-white rounded-full px-4 py-3 flex-row items-center shadow-sm">
+          <Ionicons name="search" size={18} color="#0068FF" className="mr-3" />
+          <TextInput
+            placeholder="Tìm kiếm tin nhắn, Zalo OA..."
+            className="flex-1 text-sm text-gray-700"
+            placeholderTextColor="#9CA3AF"
+          />
+          <TouchableOpacity className="ml-2 p-1">
+            <Ionicons name="qr-code-outline" size={18} color="#0068FF" />
           </TouchableOpacity>
-          <TouchableOpacity className="p-2">
-            <Ionicons name="add-circle-outline" size={20} color="#0068FF" />
+          <TouchableOpacity className="ml-2 p-1">
+            <Ionicons name="add-outline" size={18} color="#0068FF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -167,9 +156,47 @@ const HomeScreen = () => {
       </View>
 
       {/* Floating Action Button */}
-      <TouchableOpacity className="absolute bottom-20 right-4 w-12 h-12 bg-white rounded-full justify-center items-center shadow-lg border border-gray-200">
-        <Ionicons name="refresh" size={20} color="#0068FF" />
-      </TouchableOpacity>
+      <ButtonComponent
+        icon="refresh"
+        onPress={() => {}}
+        variant="icon"
+        className="absolute bottom-20 right-4 w-12 h-12 bg-white rounded-full shadow-lg border border-gray-200"
+      />
+
+      {/* Context Menu Overlay */}
+      {showMenu.visible && (
+        <TouchableOpacity 
+          className="absolute inset-0 bg-black/50" 
+          onPress={() => setShowMenu({ x: 0, y: 0, visible: false })}
+        >
+          <View 
+            className="absolute bg-white rounded-lg shadow-lg p-2 min-w-40"
+            style={{ top: showMenu.y, left: showMenu.x - 160 }}
+          >
+            <TouchableOpacity 
+              className="flex-row items-center p-3 border-b border-gray-100"
+              onPress={() => handleMenuAction('pin', chats.find(c => c.id === selectedChat))}
+            >
+              <Ionicons name="push" size={16} color="#0068FF" className="mr-3" />
+              <Text className="text-sm text-gray-700">Ghim</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              className="flex-row items-center p-3 border-b border-gray-100"
+              onPress={() => handleMenuAction('mute', chats.find(c => c.id === selectedChat))}
+            >
+              <Ionicons name="notifications-off" size={16} color="#666" className="mr-3" />
+              <Text className="text-sm text-gray-700">Tắt thông báo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              className="flex-row items-center p-3"
+              onPress={() => handleMenuAction('delete', chats.find(c => c.id === selectedChat))}
+            >
+              <Ionicons name="trash" size={16} color="#EF4444" className="mr-3" />
+              <Text className="text-sm text-red-500">Xóa</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };

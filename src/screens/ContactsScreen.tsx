@@ -1,17 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import {
-  FlatList,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Image,
   SectionList,
+  SafeAreaView,
+  TextInput,
+  StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 const ContactsScreen = () => {
+  const [activeTab, setActiveTab] = useState<'friends' | 'groups'>('friends');
+
   const contacts = [
     { id: "1", name: "Bạn A", phone: "0912345678", avatar: "https://vienmoitruong5014.org.vn/wp-content/uploads/2023/03/anh-cho-con-de-thuong_022907461.jpg", online: true },
     { id: "2", name: "Bạn B", phone: "0923456789", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60&h=60&fit=crop&crop=face", online: false },
@@ -23,6 +25,12 @@ const ContactsScreen = () => {
     { id: "8", name: "Bạn H", phone: "0989012345", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=60&h=60&fit=crop&crop=face", online: false },
   ];
 
+  const groups = [
+    { id: "g1", name: "Nhóm Gia Đình", members: 5, avatar: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=60&h=60&fit=crop&crop=face" },
+    { id: "g2", name: "Nhóm Bạn Bè", members: 8, avatar: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=60&h=60&fit=crop&crop=face" },
+    { id: "g3", name: "Nhóm Công Việc", members: 12, avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=60&h=60&fit=crop&crop=face" },
+  ];
+
   // Group contacts by first letter
   const groupedContacts = contacts.reduce((acc, contact) => {
     const firstLetter = contact.name.charAt(0).toUpperCase();
@@ -31,13 +39,13 @@ const ContactsScreen = () => {
     }
     acc[firstLetter].push(contact);
     return acc;
-  }, {});
+  }, {} as Record<string, typeof contacts>);
 
   const sections = Object.keys(groupedContacts)
     .sort()
     .map(letter => ({
       title: letter,
-      data: groupedContacts[letter],
+      data: groupedContacts[letter]
     }));
 
   const renderContactItem = ({ item }: { item: any }) => (
@@ -70,7 +78,7 @@ const ContactsScreen = () => {
   );
 
   const renderSectionHeader = ({ section }: { section: any }) => (
-    <View className="bg-gray-100 px-4 py-2">
+    <View className="bg-gray-100 px-4 py-3">
       <Text className="font-semibold text-sm text-gray-700">{section.title}</Text>
     </View>
   );
@@ -78,48 +86,74 @@ const ContactsScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="bg-white px-4 py-3 border-b border-gray-100">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-gray-900">Danh bạ</Text>
-          <View className="flex-row">
-            <TouchableOpacity className="p-2">
-              <Ionicons name="person-add-outline" size={24} color="#0068FF" />
-            </TouchableOpacity>
-            <TouchableOpacity className="p-2">
-              <Ionicons name="people-outline" size={24} color="#0068FF" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Search bar */}
-        <View className="mt-3">
-          <View className="bg-gray-100 rounded-full px-4 py-2 flex-row items-center">
-            <Ionicons name="search" size={20} color="gray" className="mr-2" />
-            <TextInput
-              placeholder="Tìm kiếm bạn bè..."
-              className="flex-1 text-sm text-gray-700"
-              placeholderTextColor="gray"
-            />
-          </View>
+      <View className="bg-blue-500 mt-9 px-4 py-5">
+        {/* Search bar with icons */}
+        <View className="bg-white rounded-full px-4 py-3 flex-row items-center shadow-sm">
+          <Ionicons name="search" size={18} color="#0068FF" className="mr-3" />
+          <TextInput
+            placeholder="Tìm kiếm bạn bè, danh bạ..."
+            className="flex-1 text-sm text-gray-700"
+            placeholderTextColor="#9CA3AF"
+          />
+          <TouchableOpacity className="ml-2">
+            <Ionicons name="person-add-outline" size={18} color="#0068FF" />
+          </TouchableOpacity>
+          {/* <TouchableOpacity className="ml-2">
+            <Ionicons name="people-outline" size={18} color="#0068FF" />
+          </TouchableOpacity> */}
         </View>
       </View>
 
-      {/* Contacts List */}
-      <View className="flex-1 bg-white">
+      {/* Tabs */}
+      <View className="bg-white border-b border-gray-200">
+        <View className="flex-row">
+          <TouchableOpacity 
+            className={`flex-1 py-3 ${activeTab === 'friends' ? 'border-b-2 border-blue-500' : ''}`}
+            onPress={() => setActiveTab('friends')}
+          >
+            <Text className={`text-center font-medium ${activeTab === 'friends' ? 'text-blue-500' : 'text-gray-500'}`}>
+              Bạn bè
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            className={`flex-1 py-3 ${activeTab === 'groups' ? 'border-b-2 border-blue-500' : ''}`}
+            onPress={() => setActiveTab('groups')}
+          >
+            <Text className={`text-center font-medium ${activeTab === 'groups' ? 'text-blue-500' : 'text-gray-500'}`}>
+              Nhóm
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Content based on active tab */}
+      {activeTab === 'friends' ? (
         <SectionList
           sections={sections}
           renderItem={renderContactItem}
           renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
           stickySectionHeadersEnabled={true}
+          className="flex-1"
         />
-      </View>
+      ) : (
+        <View className="flex-1 bg-white">
+          {groups.map((group) => (
+            <TouchableOpacity key={group.id} className="flex-row items-center p-3 bg-white border-b border-gray-50">
+              <Image
+                source={{ uri: group.avatar }}
+                className="w-12 h-12 rounded-full"
+              />
+              <View className="flex-1 ml-3">
+                <Text className="font-medium text-gray-800">{group.name}</Text>
+                <Text className="text-sm text-gray-500">{group.members} thành viên</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#666" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
-      {/* Floating Action Button */}
-      <TouchableOpacity className="absolute bottom-6 right-6 w-14 h-14 bg-blue-500 rounded-full justify-center items-center shadow-lg">
-        <Ionicons name="person-add" size={24} color="white" />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 };

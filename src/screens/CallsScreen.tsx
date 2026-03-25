@@ -1,16 +1,182 @@
-import React from "react";
-import { View, Text } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  FlatList,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 const CallsScreen = () => {
-  return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View className="p-4">
-        <Text className="text-2xl font-bold text-gray-900 mb-4">Cuộc gọi</Text>
-        <Text className="text-gray-500">
-          Danh sách cuộc gọi Zalo style sẽ ở đây
-        </Text>
+  const [activeTab, setActiveTab] = useState("all");
+
+  const callHistory = [
+    {
+      id: "1",
+      name: "Bạn A",
+      avatar: "https://vienmoitruong5014.org.vn/wp-content/uploads/2023/03/anh-cho-con-de-thuong_022907461.jpg",
+      time: "18:30",
+      date: "Hôm nay",
+      type: "incoming",
+      duration: "5 phút",
+      missed: false,
+    },
+    {
+      id: "2",
+      name: "Nhóm bạn",
+      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop&crop=face",
+      time: "17:45",
+      date: "Hôm nay",
+      type: "outgoing",
+      duration: "12 phút",
+      missed: false,
+    },
+    {
+      id: "3",
+      name: "Mẹ",
+      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=60&h=60&fit=crop&crop=face",
+      time: "16:20",
+      date: "Hôm qua",
+      type: "incoming",
+      duration: "0 phút",
+      missed: true,
+    },
+    {
+      id: "4",
+      name: "Công ty",
+      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&h=60&fit=crop&crop=face",
+      time: "14:15",
+      date: "Hôm qua",
+      type: "incoming",
+      duration: "8 phút",
+      missed: false,
+    },
+  ];
+
+  const renderCallItem = ({ item }: { item: any }) => (
+    <TouchableOpacity className="flex-row items-center p-4 bg-white border-b border-gray-50">
+      <View className="relative mr-3">
+        <Image
+          source={{ uri: item.avatar }}
+          className="w-12 h-12 rounded-full"
+        />
       </View>
+      <View className="flex-1">
+        <View className="flex-row justify-between items-center mb-1">
+          <Text className="font-semibold text-base text-gray-900 flex-1">
+            {item.name}
+          </Text>
+          <Text className="text-xs text-gray-500">{item.time}</Text>
+        </View>
+        <View className="flex-row items-center">
+          <Ionicons
+            name={
+              item.type === "incoming"
+                ? item.missed
+                  ? "call"
+                  : "call"
+                : "call"
+            }
+            size={14}
+            color={item.missed ? "#EF4444" : "#10B981"}
+            style={{
+              transform: [{ rotateY: item.type === "outgoing" ? "180deg" : "0deg" }],
+            }}
+            className="mr-1"
+          />
+          <Text
+            numberOfLines={1}
+            className={`text-sm flex-1 ${
+              item.missed ? "text-red-500" : "text-gray-600"
+            }`}
+          >
+            {item.missed ? "Cuộc gọi nhỡ" : `${item.duration} • ${item.date}`}
+          </Text>
+        </View>
+      </View>
+      <TouchableOpacity className="ml-2 p-2">
+        <Ionicons name="call" size={20} color="#0068FF" />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  return (
+    <SafeAreaView className="flex-1 bg-gray-50">
+      {/* Header */}
+      <View className="bg-blue-500 p-4 border-b border-gray-100">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-xl font-semibold text-gray-900 text-white">Cuộc gọi</Text>
+          {/* <TouchableOpacity>
+            <Ionicons name="add" size={24} color="#0068FF" />
+          </TouchableOpacity> */}
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View className="bg-white px-4 py-2 border-b border-gray-100">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <TouchableOpacity
+            className={`px-4 py-2 mr-4 rounded-full ${
+              activeTab === "all" ? "bg-blue-500" : "bg-gray-100"
+            }`}
+            onPress={() => setActiveTab("all")}
+          >
+            <Text
+              className={`text-sm font-medium ${
+                activeTab === "all" ? "text-white" : "text-gray-700"
+              }`}
+            >
+              Tất cả
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className={`px-4 py-2 mr-4 rounded-full ${
+              activeTab === "missed" ? "bg-blue-500" : "bg-gray-100"
+            }`}
+            onPress={() => setActiveTab("missed")}
+          >
+            <Text
+              className={`text-sm font-medium ${
+                activeTab === "missed" ? "text-white" : "text-gray-700"
+              }`}
+            >
+              Cuộc gọi nhỡ
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className={`px-4 py-2 rounded-full ${
+              activeTab === "incoming" ? "bg-blue-500" : "bg-gray-100"
+            }`}
+            onPress={() => setActiveTab("incoming")}
+          >
+            <Text
+              className={`text-sm font-medium ${
+                activeTab === "incoming" ? "text-white" : "text-gray-700"
+              }`}
+            >
+              Cuộc gọi đến
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Call List */}
+      <View className="flex-1 bg-white">
+        <FlatList
+          data={callHistory}
+          renderItem={renderCallItem}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+
+      {/* Floating Action Button
+      <TouchableOpacity className="absolute bottom-20 right-4 w-14 h-14 bg-blue-500 rounded-full justify-center items-center shadow-lg">
+        <Ionicons name="call" size={24} color="white" />
+      </TouchableOpacity> */}
     </SafeAreaView>
   );
 };
