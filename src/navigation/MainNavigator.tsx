@@ -11,6 +11,8 @@ import SettingsScreen from "../screens/SettingsScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import AccountScreen from "../screens/AccountScreen";
+import ChangePasswordScreen from "../screens/ChangePasswordScreen";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import { Ionicons } from "@expo/vector-icons";
 
 const Tab = createBottomTabNavigator();
@@ -24,6 +26,7 @@ function SettingsStack() {
     >
       <Stack.Screen name="SettingsMain" component={SettingsScreen} />
       <Stack.Screen name="Account" component={AccountScreen} />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -52,6 +55,7 @@ export default function MainNavigator() {
       >
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="MainApp" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>

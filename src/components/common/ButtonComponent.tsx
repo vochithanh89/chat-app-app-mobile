@@ -11,12 +11,14 @@ interface ButtonProps {
   title?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  variant?: "primary" | "secondary" | "icon";
-  size?: "small" | "medium" | "large";
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "icon";
+  size?: "small" | "medium" | "large" | "full";
   loading?: boolean;
   disabled?: boolean;
   className?: string;
   textColor?: string;
+  iconPosition?: "left" | "right";
+  fullWidth?: boolean;
 }
 
 const ButtonComponent: React.FC<ButtonProps> = ({
@@ -29,13 +31,19 @@ const ButtonComponent: React.FC<ButtonProps> = ({
   disabled = false,
   className = "",
   textColor,
+  iconPosition = "left",
+  fullWidth = false,
 }) => {
   const getVariantStyles = () => {
     switch (variant) {
       case "primary":
         return "bg-blue-500";
       case "secondary":
-        return "bg-gray-200";
+        return "bg-gray-400";
+      case "outline":
+        return "bg-transparent border border-blue-500";
+      case "ghost":
+        return "bg-transparent";
       case "icon":
         return "bg-transparent";
       default:
@@ -51,6 +59,8 @@ const ButtonComponent: React.FC<ButtonProps> = ({
         return "px-4 py-3";
       case "large":
         return "px-6 py-4";
+      case "full":
+        return "w-full p-3";
       default:
         return "px-4 py-3";
     }
@@ -65,7 +75,11 @@ const ButtonComponent: React.FC<ButtonProps> = ({
       case "primary":
         return "text-white font-semibold";
       case "secondary":
-        return "text-gray-800 font-medium";
+        return "text-white font-semibold";
+      case "outline":
+        return "text-blue-500 font-semibold";
+      case "ghost":
+        return "text-gray-700 font-medium";
       case "icon":
         return "";
       default:
@@ -86,6 +100,23 @@ const ButtonComponent: React.FC<ButtonProps> = ({
     }
   };
 
+  const getIconColor = () => {
+    switch (variant) {
+      case "primary":
+        return "#ffffff";
+      case "secondary":
+        return "#ffffff";
+      case "outline":
+        return "#3B82F6";
+      case "ghost":
+        return "#374151";
+      case "icon":
+        return "#374151";
+      default:
+        return "#ffffff";
+    }
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -94,6 +125,7 @@ const ButtonComponent: React.FC<ButtonProps> = ({
         rounded-lg items-center justify-center flex-row
         ${getVariantStyles()}
         ${getSizeStyles()}
+        ${fullWidth ? 'w-full' : ''}
         ${disabled || loading ? "opacity-50" : ""}
         ${className}
       `}
@@ -102,18 +134,26 @@ const ButtonComponent: React.FC<ButtonProps> = ({
         <ActivityIndicator size="small" color="#ffffff" />
       ) : (
         <>
-          {icon && (
+          {icon && iconPosition === "left" && (
             <Ionicons
               name={icon}
               size={getIconSize()}
-              color={variant === "primary" ? "#ffffff" : "#0068FF"}
+              color={getIconColor()}
               className={title ? "mr-2" : ""}
             />
           )}
           {title && (
-            <Text className={`${getTextStyles()} ${icon ? "ml-2" : ""}`}>
+            <Text className={`${getTextStyles()}`}>
               {title}
             </Text>
+          )}
+          {icon && iconPosition === "right" && (
+            <Ionicons
+              name={icon}
+              size={getIconSize()}
+              color={getIconColor()}
+              className={title ? "ml-2" : ""}
+            />
           )}
         </>
       )}

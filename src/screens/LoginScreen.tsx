@@ -1,26 +1,29 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { users } from "../data/users";
+import { useAuth } from "../contexts/AuthContext";
+import ButtonComponent from "../components/common/ButtonComponent";
 
 const LoginScreen = () => {
   const navigation = useNavigation<any>();
+  const { login, loading } = useAuth();
 
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = () => {
-    const user = users.find(
-      (u) => u.phone === phone && u.password === password
-    );
-
-    if (user) {
-      navigation.replace("MainApp", { user });
-    } else {
-      Alert.alert("Login Failed", "Phone number or password is incorrect");
+  const handleLogin = async () => {
+    if (!identifier || !password) {
+      Alert.alert("Lỗi", "Vui lòng nhập email và password");
+      return;
+    }
+    try {
+      await login(identifier, password);
+      navigation.replace("MainApp");
+    } catch (error) {
+      Alert.alert("Login Failed", error.response?.data?.message || "Login failed");
     }
   };
 
@@ -45,8 +48,8 @@ const LoginScreen = () => {
               <Ionicons name="mail" size={20} color="#9CA3AF" className="mr-3" />
               <TextInput
                 placeholder="Enter your email or phone"
-                value={phone}
-                onChangeText={setPhone}
+                value={identifier}
+                onChangeText={setIdentifier}
                 className="flex-1 text-gray-900"
                 keyboardType="email-address"
               />
@@ -75,19 +78,22 @@ const LoginScreen = () => {
             </View>
           </View>
 
-          {/* Forgot Password */}
           <TouchableOpacity className="self-end mb-6">
-            <Text className="text-blue-500 text-sm">Forgot Password?</Text>
+            <Text className="text-blue-500 text-sm" onPress={() => {
+              navigation.navigate("ForgotPassword");
+            }}>Forgot Password?</Text>
           </TouchableOpacity>
         </View>
 
         {/* Login Button */}
-        <TouchableOpacity
-          className="bg-blue-500 py-4 rounded-xl items-center mb-6"
+        <ButtonComponent
+          title="Sign In"
           onPress={handleLogin}
-        >
-          <Text className="text-white font-semibold text-lg">Sign In</Text>
-        </TouchableOpacity>
+          loading={loading}
+          variant="primary"
+          size="full"
+          fullWidth={true}
+        />
 
         {/* Divider */}
         <View className="flex-row items-center mb-6">
@@ -103,6 +109,15 @@ const LoginScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity className="bg-gray-100 p-3 rounded-xl">
             <Ionicons name="logo-github" size={24} color="black" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Forgot Password Link */}
+        <View className="items-center mb-4">
+          <TouchableOpacity onPress={() => {
+            navigation.navigate("ForgotPassword");
+          }}>
+            <Text className="text-blue-500 font-semibold">Quên Mát Kháu?</Text>
           </TouchableOpacity>
         </View>
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,26 +6,159 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
 } from "react-native";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { useAuth } from "../contexts/AuthContext";
+import ButtonComponent from "../components/common/ButtonComponent";
 
 const AccountScreen = () => {
   const navigation = useNavigation<any>();
+  const { user, updateProfile, uploadAvatar } = useAuth();
 
-  // 🔥 STATE DATA
-  const [name, setName] = useState("John Doe");
-  const [email, setEmail] = useState("john@example.com");
-  const [role, setRole] = useState("Admin");
-  const [bio, setBio] = useState("Full-stack developer passionate about building great products.");
-  const [status, setStatus] = useState("Online");
-
-  // 🔥 MODE: view / edit
+  // State for form data
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    bio: '',
+    phoneNumber: '',
+    address: '',
+    dateOfBirth: '',
+    gender: 'MALE',
+  });
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const handleSave = () => {
+  // Initialize form data with user data
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        bio: user.bio || '',
+        phoneNumber: user.phoneNumber || '',
+        address: user.address || '',
+        dateOfBirth: user.dateOfBirth || '',
+        gender: user.gender || 'MALE',
+      });
+    }
+  }, [user]);
+
+  // Hàm validation cho form
+  const validateForm = () => {
+    const errors = [];
+    
+    // Kiểm tra các trường bắt buộc
+    if (!formData.firstName.trim()) {
+      errors.push('First name is required');
+    }
+    
+    if (!formData.lastName.trim()) {
+      errors.push('Last name is required');
+    }
+    
+    if (!formData.email.trim()) {
+      errors.push('Email is required');
+    } else {
+      // Kiểm tra format email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        errors.push('Email format is invalid');
+      }
+    }
+    
+    // Kiểm tra số điện thoại nếu có
+    if (formData.phoneNumber && formData.phoneNumber.trim()) {
+      const phoneRegex = /^[+]?[0-9]{10,15}$/;
+      if (!phoneRegex.test(formData.phoneNumber.replace(/[^0-9+]/g, ''))) {
+        errors.push('Phone number format is invalid');
+      }
+    }
+    
+    // Kiểm tra ngày sinh nếu có
+    if (formData.dateOfBirth && formData.dateOfBirth.trim()) {
+      const date = new Date(formData.dateOfBirth);
+      const today = new Date();
+      if (isNaN(date.getTime()) || date >= today) {
+        errors.push('Please enter a valid date of birth');
+      }
+    }
+    
+    return errors;
+  };
+
+  const handleSave = async () => {
+    // Validation trước khi lưu
+    const errors = validateForm();
+    if (errors.length > 0) {
+      Alert.alert('Validation Error', errors.join('\n'));
+      return;
+    }
+    
+    // Confirm dialog
+    Alert.alert(
+      'Confirm Update',
+      'Are you sure you want to update your profile?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Update',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await updateProfile(formData);
+              setIsEditing(false);
+              Alert.alert('Success', 'Profile updated successfully');
+            } catch (error) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to update profile');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancel = () => {
+    // Reset form về dữ liệu gốc từ user
+    if (user) {
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        bio: user.bio || '',
+        phoneNumber: user.phoneNumber || '',
+        address: user.address || '',
+        dateOfBirth: user.dateOfBirth || '',
+        gender: user.gender || 'MALE',
+      });
+    }
     setIsEditing(false);
+  };
+
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+      setFormData({...formData, dateOfBirth: formattedDate});
+    }
+  };
+
+  const handleAvatarUpload = async () => {
+    // Implement image picker logic here
+    Alert.alert('Thông báo', 'Tính năng upload avatar sẽ được thêm sau');
   };
 
   const renderField = (
@@ -53,7 +186,7 @@ const AccountScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
 
-      {/* 🔹 HEADER */}
+      {/* HEADER */}
       <View className="flex-row items-center p-4 bg-blue-500 border-b border-gray-100">
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="white" />
@@ -81,12 +214,12 @@ const AccountScreen = () => {
               <View className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
             </View>
             
-            <Text className="text-xl font-bold text-gray-800 mt-3">{name}</Text>
-            <Text className="text-gray-500">{email}</Text>
+            <Text className="text-xl font-bold text-gray-800 mt-3">{formData.lastName} {formData.firstName} </Text>
+            <Text className="text-gray-500">{formData.email}</Text>
             
             <TouchableOpacity className="flex-row items-center mt-2 bg-gray-100 px-3 py-1.5 rounded-full">
               <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-              <Text className="text-green-600 text-sm font-medium">{status}</Text>
+              <Text className="text-green-600 text-sm font-medium">Online</Text>
               <Ionicons name="chevron-down" size={14} color="#22c55e" className="ml-1" />
             </TouchableOpacity>
           </View>
@@ -97,19 +230,36 @@ const AccountScreen = () => {
           <Text className="text-lg font-semibold text-gray-800 mb-1">Personal Information</Text>
           <Text className="text-sm text-gray-500 mb-4">Update your personal details here.</Text>
           
-          {/* Full Name */}
+          {/* First Name */}
           <View className="mb-4">
-            <Text className="text-sm text-gray-600 mb-2">Full Name</Text>
+            <Text className="text-sm text-gray-600 mb-2">First Name</Text>
             <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
               <Ionicons name="person" size={18} color="#666" className="mr-3" />
               {isEditing ? (
                 <TextInput
-                  value={name}
-                  onChangeText={setName}
+                  value={formData.firstName}
+                  onChangeText={(text) => setFormData({...formData, firstName: text})}
                   className="flex-1 text-gray-800"
                 />
               ) : (
-                <Text className="flex-1 text-gray-800">{name}</Text>
+                <Text className="flex-1 text-gray-800">{formData.firstName}</Text>
+              )}
+            </View>
+          </View>
+          
+          {/* Last Name */}
+          <View className="mb-4">
+            <Text className="text-sm text-gray-600 mb-2">Last Name</Text>
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
+              <Ionicons name="person" size={18} color="#666" className="mr-3" />
+              {isEditing ? (
+                <TextInput
+                  value={formData.lastName}
+                  onChangeText={(text) => setFormData({...formData, lastName: text})}
+                  className="flex-1 text-gray-800"
+                />
+              ) : (
+                <Text className="flex-1 text-gray-800">{formData.lastName}</Text>
               )}
             </View>
           </View>
@@ -121,13 +271,13 @@ const AccountScreen = () => {
               <Ionicons name="mail" size={18} color="#666" className="mr-3" />
               {isEditing ? (
                 <TextInput
-                  value={email}
-                  onChangeText={setEmail}
+                  value={formData.email}
+                  onChangeText={(text) => setFormData({...formData, email: text})}
                   className="flex-1 text-gray-800"
                   keyboardType="email-address"
                 />
               ) : (
-                <Text className="flex-1 text-gray-800">{email}</Text>
+                <Text className="flex-1 text-gray-800">{formData.email}</Text>
               )}
             </View>
           </View>
@@ -137,7 +287,7 @@ const AccountScreen = () => {
             <Text className="text-sm text-gray-600 mb-2">Role</Text>
             <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
               <Ionicons name="briefcase" size={18} color="#666" className="mr-3" />
-              <Text className="flex-1 text-gray-800">{role}</Text>
+              <Text className="flex-1 text-gray-800">User</Text>
             </View>
           </View>
           
@@ -147,35 +297,175 @@ const AccountScreen = () => {
             <View className="bg-gray-50 rounded-lg px-3 py-3">
               {isEditing ? (
                 <TextInput
-                  value={bio}
-                  onChangeText={setBio}
+                  value={formData.bio}
+                  onChangeText={(text) => setFormData({...formData, bio: text})}
                   className="text-gray-800"
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
                 />
               ) : (
-                <Text className="text-gray-800">{bio}</Text>
+                <Text className="text-gray-800">{formData.bio}</Text>
               )}
             </View>
           </View>
           
-          {/* Member Since and Save Button */}
-          <View className="flex-row items-center justify-between mt-4">
-            <View className="flex-row items-center">
+          {/* Phone Number */}
+          <View className="mb-4">
+            <Text className="text-sm text-gray-600 mb-2">Phone Number</Text>
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
+              <Ionicons name="call" size={18} color="#666" className="mr-3" />
+              {isEditing ? (
+                <TextInput
+                  value={formData.phoneNumber}
+                  onChangeText={(text) => setFormData({...formData, phoneNumber: text})}
+                  className="flex-1 text-gray-800"
+                  keyboardType="phone-pad"
+                  placeholder="Enter phone number"
+                />
+              ) : (
+                <Text className="flex-1 text-gray-800">{formData.phoneNumber || 'Not provided'}</Text>
+              )}
+            </View>
+          </View>
+          
+          {/* Address */}
+          <View className="mb-4">
+            <Text className="text-sm text-gray-600 mb-2">Address</Text>
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
+              <Ionicons name="location" size={18} color="#666" className="mr-3" />
+              {isEditing ? (
+                <TextInput
+                  value={formData.address}
+                  onChangeText={(text) => setFormData({...formData, address: text})}
+                  className="flex-1 text-gray-800"
+                  placeholder="Enter address"
+                />
+              ) : (
+                <Text className="flex-1 text-gray-800">{formData.address || 'Not provided'}</Text>
+              )}
+            </View>
+          </View>
+          
+          {/* Date of Birth */}
+          <View className="mb-4">
+            <Text className="text-sm text-gray-600 mb-2">Date of Birth</Text>
+            <TouchableOpacity
+              className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3"
+              onPress={() => isEditing && setShowDatePicker(true)}
+              disabled={!isEditing}
+            >
+              <Ionicons name="calendar" size={18} color="#666" className="mr-3" />
+              <Text className="flex-1 text-gray-800">
+                {formData.dateOfBirth ? new Date(formData.dateOfBirth).toLocaleDateString() : 'Select date of birth'}
+              </Text>
+              {isEditing && (
+                <Ionicons name="chevron-down" size={16} color="#666" />
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          {/* Date Picker Modal */}
+          {showDatePicker && (
+            <Modal
+              transparent={true}
+              animationType="slide"
+              visible={showDatePicker}
+              onRequestClose={() => setShowDatePicker(false)}
+            >
+              <View className="flex-1 justify-end bg-black bg-opacity-50">
+                <View className="bg-white rounded-t-2xl p-4">
+                  <View className="flex-row justify-between items-center mb-4">
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text className="text-blue-500 font-semibold">Cancel</Text>
+                    </TouchableOpacity>
+                    <Text className="text-lg font-semibold">Select Date of Birth</Text>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text className="text-blue-500 font-semibold">Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={formData.dateOfBirth ? new Date(formData.dateOfBirth) : new Date()}
+                    mode="date"
+                    display="spinner"
+                    maximumDate={new Date()}
+                    onChange={handleDateChange}
+                    style={{ width: '100%' }}
+                  />
+                </View>
+              </View>
+            </Modal>
+          )}
+          
+          {/* Gender */}
+          <View className="mb-4">
+            <Text className="text-sm text-gray-600 mb-2">Gender</Text>
+            <View className="flex-row items-center bg-gray-50 rounded-lg px-3 py-3">
+              <Ionicons name="person" size={18} color="#666" className="mr-3" />
+              {isEditing ? (
+                <View className="flex-row space-x-4">
+                  <TouchableOpacity
+                    onPress={() => setFormData({...formData, gender: 'MALE'})}
+                    className={`px-3 py-1 rounded ${formData.gender === 'MALE' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                  >
+                    <Text className={`text-sm ${formData.gender === 'MALE' ? 'text-white' : 'text-gray-700'}`}>Male</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setFormData({...formData, gender: 'FEMALE'})}
+                    className={`px-3 py-1 rounded ${formData.gender === 'FEMALE' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                  >
+                    <Text className={`text-sm ${formData.gender === 'FEMALE' ? 'text-white' : 'text-gray-700'}`}>Female</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setFormData({...formData, gender: 'OTHER'})}
+                    className={`px-3 py-1 rounded ${formData.gender === 'OTHER' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                  >
+                    <Text className={`text-sm ${formData.gender === 'OTHER' ? 'text-white' : 'text-gray-700'}`}>Other</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text className="flex-1 text-gray-800">
+                  {formData.gender === 'MALE' ? 'Male' : formData.gender === 'FEMALE' ? 'Female' : formData.gender === 'OTHER' ? 'Other' : 'Not specified'}
+                </Text>
+              )}
+            </View>
+          </View>
+          
+          {/* Member Since and Action Buttons */}
+          <View className="flex-col items-start mt-4">
+            <View className="flex-row items-center mb-3">
               <Ionicons name="calendar" size={18} color="#666" className="mr-3" />
               <Text className="text-sm text-gray-600">Member since January 2024</Text>
             </View>
             
-            <TouchableOpacity
-              className="bg-blue-500 p-3 rounded-lg flex-row items-center justify-center"
-              onPress={() => isEditing ? handleSave() : setIsEditing(true)}
-            >
-              <Ionicons name="save" size={18} color="white" className="mr-2" />
-              <Text className="text-white font-semibold">
-                {isEditing ? "Save Changes" : "Edit Profile"}
-              </Text>
-            </TouchableOpacity>
+            {/* Action Buttons */}
+            <View className={`${isEditing ? 'flex-row space-x-3' : 'w-full'}`}>
+              {isEditing && (
+                <View className="flex-1">
+                  <ButtonComponent
+                    title="Cancel"
+                    icon="close"
+                    onPress={handleCancel}
+                    disabled={loading}
+                    variant="secondary"
+                    size="medium"
+                    fullWidth={true}
+                  />
+                </View>
+              )}
+              
+              <View className={isEditing ? 'flex-1' : 'w-full'}>
+                <ButtonComponent
+                  title={isEditing ? "Save Changes" : "Edit Profile"}
+                  icon={isEditing ? "save" : "create"}
+                  onPress={() => isEditing ? handleSave() : setIsEditing(true)}
+                  loading={loading}
+                  variant="primary"
+                  size="medium"
+                  fullWidth={true}
+                />
+              </View>
+            </View>
           </View>
         </View>
 

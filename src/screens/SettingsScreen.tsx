@@ -31,22 +31,6 @@ const SettingsScreen = () => {
         <Text className="text-xl font-semibold text-gray-900 text-white">Setting</Text>
       </View>
 
-      {/* Profile */}
-      <View className="bg-white p-4 flex-row items-center mt-2">
-        <AvatarComponent
-          source={{
-            uri: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face",
-          }}
-          size="large"
-        />
-        <View className="ml-3">
-          <Text className="text-base font-semibold text-gray-900">
-            Nguyễn Văn A
-          </Text>
-          {/* <Text className="text-gray-500 text-sm">Xem trang cá nhân</Text> */}
-        </View>
-      </View>
-
       {/* SETTINGS */}
       <View className="bg-white mt-3">
         {/* Tài khoản */}
@@ -54,6 +38,13 @@ const SettingsScreen = () => {
           icon="person-outline"
           title="Profile"
           onPress={() => navigation.navigate("Account")}
+        />
+
+        {/* Đổi mật khẩu */}
+        <MenuItemComponent
+          icon="key-outline"
+          title="Change Password"
+          onPress={() => navigation.navigate("ChangePassword")}
         />
 
         {/* Quyền riêng tư */}

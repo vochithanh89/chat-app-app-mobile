@@ -1,22 +1,51 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../contexts/AuthContext";
+import ButtonComponent from "../components/common/ButtonComponent";
 
 const RegisterScreen = () => {
   const navigation = useNavigation<any>();
+  const { sendOtp, register } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
 
-  const handleRegister = () => {
+  const handleSendOtp = async () => {
+    if (!email) {
+      Alert.alert("Lỗi", "Vui lòng nhập email");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await sendOtp(email);
+      setOtpSent(true);
+      Alert.alert("Thành công", "OTP đã được gửi đến email của bạn");
+    } catch (error) {
+      Alert.alert("Lỗi", error.response?.data?.message || "Gửi OTP thất bại");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    if (!otp) {
+      Alert.alert("Lỗi", "Vui lòng nhập OTP");
       return;
     }
 
@@ -30,9 +59,22 @@ const RegisterScreen = () => {
       return;
     }
 
-    // Registration logic here
-    Alert.alert("Success", "Account created successfully!");
-    navigation.goBack();
+    try {
+      setLoading(true);
+      await register({
+        fullName: name,
+        email: email,
+        password: password,
+        confirmPassword: confirmPassword,
+        otp: otp
+      });
+      Alert.alert("Thành công", "Đăng ký tài khoản thành công!");
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert("Lỗi", error.response?.data?.message || "Đăng ký thất bại");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,18 +108,47 @@ const RegisterScreen = () => {
           {/* Email Input */}
           <View className="mb-4">
             <Text className="text-gray-700 mb-2 font-medium">Email</Text>
-            <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
-              <Ionicons name="mail" size={20} color="#9CA3AF" className="mr-3" />
-              <TextInput
-                placeholder="Enter your email"
-                value={email}
-                onChangeText={setEmail}
-                className="flex-1 text-gray-900"
-                keyboardType="email-address"
-                autoCapitalize="none"
+            <View className="flex-row">
+              <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200 flex-1">
+                <Ionicons name="mail" size={20} color="#9CA3AF" className="mr-3" />
+                <TextInput
+                  placeholder="Enter your email"
+                  value={email}
+                  onChangeText={setEmail}
+                  className="flex-1 text-gray-900"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+              <ButtonComponent
+                title="Send OTP"
+                onPress={handleSendOtp}
+                loading={loading}
+                disabled={!email}
+                variant="primary"
+                size="medium"
+                icon="mail"
               />
             </View>
           </View>
+
+          {/* OTP Input */}
+          {otpSent && (
+            <View className="mb-4">
+              <Text className="text-gray-700 mb-2 font-medium">OTP Code</Text>
+              <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
+                <Ionicons name="key" size={20} color="#9CA3AF" className="mr-3" />
+                <TextInput
+                  placeholder="Enter OTP"
+                  value={otp}
+                  onChangeText={setOtp}
+                  className="flex-1 text-gray-900"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+              </View>
+            </View>
+          )}
 
           {/* Password Input */}
           <View className="mb-4">
@@ -92,10 +163,10 @@ const RegisterScreen = () => {
                 className="flex-1 text-gray-900"
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons 
-                  name={showPassword ? "eye-off" : "eye"} 
-                  size={20} 
-                  color="#9CA3AF" 
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color="#9CA3AF"
                 />
               </TouchableOpacity>
             </View>
@@ -114,10 +185,10 @@ const RegisterScreen = () => {
                 className="flex-1 text-gray-900"
               />
               <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-                <Ionicons 
-                  name={showConfirmPassword ? "eye-off" : "eye"} 
-                  size={20} 
-                  color="#9CA3AF" 
+                <Ionicons
+                  name={showConfirmPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color="#9CA3AF"
                 />
               </TouchableOpacity>
             </View>
@@ -135,12 +206,16 @@ const RegisterScreen = () => {
         </View>
 
         {/* Register Button */}
-        <TouchableOpacity
-          className="bg-blue-500 py-4 rounded-xl items-center mb-6"
+        <ButtonComponent
+          title="Create Account"
           onPress={handleRegister}
-        >
-          <Text className="text-white font-semibold text-lg">Create Account</Text>
-        </TouchableOpacity>
+          loading={loading}
+          disabled={!otpSent}
+          variant="primary"
+          size="full"
+          fullWidth={true}
+          icon="person-add"
+        />
 
         {/* Divider */}
         <View className="flex-row items-center mb-6">
