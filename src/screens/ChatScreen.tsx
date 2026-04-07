@@ -378,7 +378,7 @@ const ChatScreen = () => {
       />
 
       {/* Input bar*/}
-      <View className="bg-white px-2 py-1.5 border-t border-gray-200">
+      <View className="bg-white px-3 py-2 border-t border-gray-200">
         {/* Reply UI */}
         {replyingTo && (
           <View className="flex-row items-center bg-gray-50 p-2 mb-2 rounded-lg">
@@ -395,42 +395,36 @@ const ChatScreen = () => {
           </View>
         )}
         
-        <View className="flex-row items-center mt-2 mb-2">
-          {message.length === 0 ? (
-            <>
-              <TouchableOpacity className="mr-1.5">
-                <Ionicons name="happy-outline" size={24} color="gray" />
-              </TouchableOpacity>
-              <TextInput
-                placeholder="Nhập tin nhắn..."
-                value={message}
-                onChangeText={setMessage}
-                className="flex-1 px-4 py-0.5 mr-1.5 text-sm h-8"
-                multiline={true}
-              />
-                <TouchableOpacity className="mr-1.5">
-                <Ionicons name="add-circle-outline" size={24} color="gray" />
-              </TouchableOpacity>
-              <TouchableOpacity className="mr-1.5">
-                <Ionicons name="image-outline" size={24} color="gray" />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity className="mr-1.5">
-                <Ionicons name="add-circle-outline" size={24} color="gray" />
-              </TouchableOpacity>
-              <TextInput
-                placeholder="Nhập tin nhắn..."
-                value={message}
-                onChangeText={setMessage}
-                className="flex-1 px-4 py-0.5 mr-1.5 text-sm h-8"
-                multiline={true}
-              />
-              <TouchableOpacity className="bg-blue-500 p-2 rounded-full">
-                <Ionicons name="send" size={14} color="white" />
-              </TouchableOpacity>
-            </>
+        <View className="flex-row items-center">
+          {/* Paperclip icon */}
+          <TouchableOpacity className="mr-3">
+            <Ionicons name="attach" size={22} color="#666" />
+          </TouchableOpacity>
+          
+          {/* Text input */}
+          <View className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-3">
+            <TextInput
+              placeholder="Type a message..."
+              placeholderTextColor="#999"
+              value={message}
+              onChangeText={setMessage}
+              className="text-sm text-gray-800 -mt-1"
+              multiline={false}
+            />
+          </View>
+          
+          {/* Emoji icon - only show when input is empty */}
+          {message.length === 0 && (
+            <TouchableOpacity className="mr-3">
+              <Ionicons name="happy-outline" size={22} color="#666" />
+            </TouchableOpacity>
+          )}
+          
+          {/* Send button - only show when there's content */}
+          {message.length > 0 && (
+            <TouchableOpacity className="bg-blue-400 p-2 rounded-full">
+              <Ionicons name="send" size={16} color="white" />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -443,14 +437,14 @@ const ChatScreen = () => {
       >
         {/* Emoji Picker */}
         <View 
-          className="absolute bg-white rounded-lg shadow-lg p-2 min-w-44"
+          className="absolute bg-white rounded-lg shadow-lg p-3"
           style={{ top: showMenu.y - 85, left: showMenu.x }}
         >
           <View className="flex-row justify-between items-center">
             {["❤️", "👍", "😂", "😮", "😢", "😡"].map((emoji, index) => (
               <TouchableOpacity 
                 key={index}
-                className="flex-1 items-center justify-center p-2"
+                className="w-10 h-10 items-center justify-center"
                 onPress={() => handleEmojiSelect(emoji)}
               >
                 <Text className="text-2xl">{emoji}</Text>

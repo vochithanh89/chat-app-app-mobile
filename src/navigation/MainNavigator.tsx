@@ -46,34 +46,47 @@ function HomeStack() {
 export default function MainNavigator() {
   return (
     <NavigationContainer>
-      <Tab.Navigator
-        id="main-tab-navigator"
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap;
-
-            if (route.name === "Trang chủ") {
-              iconName = focused ? "home" : "home-outline";
-            } else if (route.name === "Danh bạ") {
-              iconName = focused ? "people" : "people-outline";
-            } else if (route.name === "Cuộc gọi") {
-              iconName = focused ? "call" : "call-outline";
-            } else {
-              iconName = focused ? "settings" : "settings-outline";
-            }
-
-            return <Ionicons name={iconName} size={size} color={color} />;
-          },
-          tabBarActiveTintColor: "#0068FF",
-          tabBarInactiveTintColor: "gray",
-          headerShown: false,
-        })}
+      <Stack.Navigator
+        id="main-stack-navigator"
+        screenOptions={{ headerShown: false }}
       >
-        <Tab.Screen name="Trang chủ" component={HomeStack} />
-        <Tab.Screen name="Danh bạ" component={ContactsScreen} />
-        <Tab.Screen name="Cuộc gọi" component={CallsScreen} />
-        <Tab.Screen name="Cài đặt" component={SettingsStack} />
-      </Tab.Navigator>
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="MainApp" component={MainTabs} />
+      </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      id="main-tab-navigator"
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: keyof typeof Ionicons.glyphMap;
+
+          if (route.name === "Home") {
+            iconName = focused ? "home" : "home-outline";
+          } else if (route.name === "Contact") {
+            iconName = focused ? "people" : "people-outline";
+          } else if (route.name === "Call") {
+            iconName = focused ? "call" : "call-outline";
+          } else {
+            iconName = focused ? "settings" : "settings-outline";
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: "#0068FF",
+        tabBarInactiveTintColor: "gray",
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeStack} />
+      <Tab.Screen name="Contact" component={ContactsScreen} />
+      <Tab.Screen name="Call" component={CallsScreen} />
+      <Tab.Screen name="Setting" component={SettingsStack} />
+    </Tab.Navigator>
   );
 }

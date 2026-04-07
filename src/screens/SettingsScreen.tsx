@@ -28,7 +28,7 @@ const SettingsScreen = () => {
       
       {/* Header */}
       <View className="bg-blue-500 p-4 border-b border-gray-100">
-        <Text className="text-xl font-semibold text-gray-900 text-white">Cài đặt</Text>
+        <Text className="text-xl font-semibold text-gray-900 text-white">Setting</Text>
       </View>
 
       {/* Profile */}
@@ -43,7 +43,7 @@ const SettingsScreen = () => {
           <Text className="text-base font-semibold text-gray-900">
             Nguyễn Văn A
           </Text>
-          <Text className="text-gray-500 text-sm">Xem trang cá nhân</Text>
+          {/* <Text className="text-gray-500 text-sm">Xem trang cá nhân</Text> */}
         </View>
       </View>
 
@@ -52,14 +52,14 @@ const SettingsScreen = () => {
         {/* Tài khoản */}
         <MenuItemComponent
           icon="person-outline"
-          title="Tài khoản"
+          title="Profile"
           onPress={() => navigation.navigate("Account")}
         />
 
         {/* Quyền riêng tư */}
         <MenuItemComponent 
           icon="lock-closed-outline" 
-          title="Chế độ riêng tư"
+          title="Privacy mode"
           rightComponent={
             <Switch value={isPrivate} onValueChange={setIsPrivate} />
           }
@@ -68,7 +68,7 @@ const SettingsScreen = () => {
         {/* Thông báo */}
         <MenuItemComponent 
           icon="notifications-outline" 
-          title="Thông báo"
+          title="Notification"
           rightComponent={
             <Switch value={notification} onValueChange={setNotification} />
           }
@@ -89,7 +89,7 @@ const SettingsScreen = () => {
         className="mt-6 mx-4 bg-white p-4 rounded-xl items-center"
         onPress={() => navigation.replace("Login")}
       >
-        <Text className="text-red-500 font-semibold">Đăng xuất</Text>
+        <Text className="text-red-500 font-semibold">Log out</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );

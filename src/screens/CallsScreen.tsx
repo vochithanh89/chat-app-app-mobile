@@ -16,45 +16,56 @@ const CallsScreen = () => {
   const callHistory = [
     {
       id: "1",
-      name: "Bạn A",
+      name: "Friend A",
       avatar: "https://vienmoitruong5014.org.vn/wp-content/uploads/2023/03/anh-cho-con-de-thuong_022907461.jpg",
       time: "18:30",
-      date: "Hôm nay",
+      date: "Today",
       type: "incoming",
-      duration: "5 phút",
+      duration: "5 min",
       missed: false,
     },
     {
       id: "2",
-      name: "Nhóm bạn",
+      name: "Friend Group",
       avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop&crop=face",
       time: "17:45",
-      date: "Hôm nay",
+      date: "Today",
       type: "outgoing",
-      duration: "12 phút",
+      duration: "12 min",
       missed: false,
     },
     {
       id: "3",
-      name: "Mẹ",
+      name: "Mom",
       avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=60&h=60&fit=crop&crop=face",
       time: "16:20",
-      date: "Hôm qua",
+      date: "Yesterday",
       type: "incoming",
-      duration: "0 phút",
+      duration: "0 min",
       missed: true,
     },
     {
       id: "4",
-      name: "Công ty",
+      name: "Company",
       avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&h=60&fit=crop&crop=face",
       time: "14:15",
-      date: "Hôm qua",
+      date: "Yesterday",
       type: "incoming",
-      duration: "8 phút",
+      duration: "8 min",
       missed: false,
     },
   ];
+
+  const getFilteredCalls = () => {
+    switch (activeTab) {
+      case "missed":
+        return callHistory.filter(call => call.missed);
+      case "incoming":
+        return callHistory.filter(call => call.type === "incoming");
+      default:
+        return callHistory;
+    }
+  };
 
   const renderCallItem = ({ item }: { item: any }) => (
     <TouchableOpacity className="flex-row items-center p-4 bg-white border-b border-gray-50">
@@ -93,7 +104,7 @@ const CallsScreen = () => {
               item.missed ? "text-red-500" : "text-gray-600"
             }`}
           >
-            {item.missed ? "Cuộc gọi nhỡ" : `${item.duration} • ${item.date}`}
+            {item.missed ? "Missed call" : `${item.duration} • ${item.date}`}
           </Text>
         </View>
       </View>
@@ -108,10 +119,7 @@ const CallsScreen = () => {
       {/* Header */}
       <View className="bg-blue-500 p-4 border-b border-gray-100">
         <View className="flex-row justify-between items-center">
-          <Text className="text-xl font-semibold text-gray-900 text-white">Cuộc gọi</Text>
-          {/* <TouchableOpacity>
-            <Ionicons name="add" size={24} color="#0068FF" />
-          </TouchableOpacity> */}
+          <Text className="text-xl font-semibold text-gray-900 text-white">Call</Text>
         </View>
       </View>
 
@@ -129,7 +137,7 @@ const CallsScreen = () => {
                 activeTab === "all" ? "text-white" : "text-gray-700"
               }`}
             >
-              Tất cả
+              All
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -143,7 +151,7 @@ const CallsScreen = () => {
                 activeTab === "missed" ? "text-white" : "text-gray-700"
               }`}
             >
-              Cuộc gọi nhỡ
+              Missed call
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -157,7 +165,7 @@ const CallsScreen = () => {
                 activeTab === "incoming" ? "text-white" : "text-gray-700"
               }`}
             >
-              Cuộc gọi đến
+              Incoming call
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -166,17 +174,12 @@ const CallsScreen = () => {
       {/* Call List */}
       <View className="flex-1 bg-white">
         <FlatList
-          data={callHistory}
+          data={getFilteredCalls()}
           renderItem={renderCallItem}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
         />
       </View>
-
-      {/* Floating Action Button
-      <TouchableOpacity className="absolute bottom-20 right-4 w-14 h-14 bg-blue-500 rounded-full justify-center items-center shadow-lg">
-        <Ionicons name="call" size={24} color="white" />
-      </TouchableOpacity> */}
     </SafeAreaView>
   );
 };

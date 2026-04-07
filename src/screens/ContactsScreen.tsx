@@ -91,7 +91,7 @@ const ContactsScreen = () => {
         <View className="bg-white rounded-full px-4 py-3 flex-row items-center shadow-sm">
           <Ionicons name="search" size={18} color="#0068FF" className="mr-3" />
           <TextInput
-            placeholder="Tìm kiếm bạn bè, danh bạ..."
+            placeholder="Search friends, contacts..."
             className="flex-1 text-sm text-gray-700"
             placeholderTextColor="#9CA3AF"
           />
@@ -112,7 +112,7 @@ const ContactsScreen = () => {
             onPress={() => setActiveTab('friends')}
           >
             <Text className={`text-center font-medium ${activeTab === 'friends' ? 'text-blue-500' : 'text-gray-500'}`}>
-              Bạn bè
+              Friends
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
@@ -120,7 +120,7 @@ const ContactsScreen = () => {
             onPress={() => setActiveTab('groups')}
           >
             <Text className={`text-center font-medium ${activeTab === 'groups' ? 'text-blue-500' : 'text-gray-500'}`}>
-              Nhóm
+              Groups
             </Text>
           </TouchableOpacity>
         </View>
