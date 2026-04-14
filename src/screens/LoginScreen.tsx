@@ -113,13 +113,13 @@ const LoginScreen = () => {
         </View>
 
         {/* Forgot Password Link */}
-        <View className="items-center mb-4">
+        {/* <View className="items-center mb-4">
           <TouchableOpacity onPress={() => {
             navigation.navigate("ForgotPassword");
           }}>
             <Text className="text-blue-500 font-semibold">Quên Mát Kháu?</Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {/* Sign Up Link */}
         <View className="items-center mb-8">

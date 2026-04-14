@@ -3,16 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-
-// Import new components
-import ButtonComponent from "../components/common/ButtonComponent";
-import AvatarComponent from "../components/common/AvatarComponent";
 import MenuItemComponent from "../components/list/MenuItemComponent";
 
 const SettingsScreen = () => {

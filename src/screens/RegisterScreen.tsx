@@ -8,7 +8,7 @@ import ButtonComponent from "../components/common/ButtonComponent";
 
 const RegisterScreen = () => {
   const navigation = useNavigation<any>();
-  const { sendOtp, register } = useAuth();
+  const { sendOTP, register } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,17 +22,17 @@ const RegisterScreen = () => {
 
   const handleSendOtp = async () => {
     if (!email) {
-      Alert.alert("Lỗi", "Vui lòng nhập email");
+      Alert.alert("Error", "Please enter your email");
       return;
     }
 
     try {
       setLoading(true);
-      await sendOtp(email);
+      await sendOTP(email);
       setOtpSent(true);
-      Alert.alert("Thành công", "OTP đã được gửi đến email của bạn");
+      Alert.alert("Success", "OTP has been sent to your email");
     } catch (error) {
-      Alert.alert("Lỗi", error.response?.data?.message || "Gửi OTP thất bại");
+      Alert.alert("Error", error.response?.data?.message || "Failed to send OTP");
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ const RegisterScreen = () => {
     }
 
     if (!otp) {
-      Alert.alert("Lỗi", "Vui lòng nhập OTP");
+      Alert.alert("Error", "Please fill OTP");
       return;
     }
 
@@ -68,10 +68,10 @@ const RegisterScreen = () => {
         confirmPassword: confirmPassword,
         otp: otp
       });
-      Alert.alert("Thành công", "Đăng ký tài khoản thành công!");
+      Alert.alert("Success", "Account registered successfully!");
       navigation.goBack();
     } catch (error) {
-      Alert.alert("Lỗi", error.response?.data?.message || "Đăng ký thất bại");
+      Alert.alert("Error", error.response?.data?.message || "Registration failed");
     } finally {
       setLoading(false);
     }

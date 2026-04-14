@@ -40,7 +40,9 @@ export const AuthProvider = ({ children }) => {
       if (token && !skipProfileCheck) {
         // Xác thực token bằng cách lấy thông tin người dùng
         const profileResponse = await userAPI.getProfile();
-        setUser(profileResponse.data);
+        // Kiểm tra trả response structure và lấy dữ liệu đúng
+        const userData = profileResponse.data || profileResponse.data.data;
+        setUser(userData);
         setIsAuthenticated(true);
       } else if (token && skipProfileCheck) {
         // Bỏ qua kiểm tra profile nhưng vẫn đặt trạng thái đã xác thực
@@ -62,14 +64,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Đăng nhập người dùng
-  const login = async (identifier, password) => {
+  const login = async (email, password) => {
     try {
       setLoading(true);
-      const response = await authAPI.login(identifier, password);
+      const response = await authAPI.login(email, password);
       
       // Lấy thông tin người dùng sau khi đăng nhập thành công
       const profileResponse = await userAPI.getProfile();
-      setUser(profileResponse.data);
+      // Kiểm tra trả response structure và lấy dữ liệu đúng
+      const userData = profileResponse.data.data || profileResponse.data;
+      setUser(userData);
       setIsAuthenticated(true);
       
       return response;
@@ -119,7 +123,9 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (profileData) => {
     try {
       const response = await userAPI.updateProfile(profileData);
-      setUser(response.data);
+      // Kiểm tra trả response structure và lấy dữ liệu đúng
+      const userData = response.data || response.data.data;
+      setUser(userData);
       return response;
     } catch (error) {
       throw error;
@@ -140,9 +146,14 @@ export const AuthProvider = ({ children }) => {
   const uploadAvatar = async (imageUri) => {
     try {
       const response = await userAPI.uploadAvatar(imageUri);
-      setUser(response.data);
+      console.log('Upload Avatar Response:', JSON.stringify(response, null, 2));
+      // Kiểm tra trả response structure và lấy dữ liệu đúng
+      const userData = response.data || response.data.data;
+      console.log('User Data to set:', userData);
+      setUser(userData);
       return response;
     } catch (error) {
+      console.log('Upload Avatar Error:', error);
       throw error;
     }
   };

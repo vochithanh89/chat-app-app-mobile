@@ -6,6 +6,7 @@ import HomeScreen from "../screens/HomeScreen";
 import ContactsScreen from "../screens/ContactsScreen";
 import ChatScreen from "../screens/ChatScreen";
 import ChatOptionsScreen from "../screens/ChatOptionsScreen";
+import ProfileScreen from "../screens/ProfileScreen";
 import CallsScreen from "../screens/CallsScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import LoginScreen from "../screens/LoginScreen";
@@ -38,10 +39,22 @@ function HomeStack() {
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
-      <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
       <Stack.Screen name="Account" component={AccountScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function ContactStack() {
+  return (
+    <Stack.Navigator
+      id="contact-stack-navigator"
+      screenOptions={{ headerShown: false }}
+    >
+      <Stack.Screen name="ContactsMain" component={ContactsScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );
 }
@@ -88,7 +101,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Contact" component={ContactsScreen} />
+      <Tab.Screen name="Contact" component={ContactStack} />
       <Tab.Screen name="Call" component={CallsScreen} />
       <Tab.Screen name="Setting" component={SettingsStack} />
     </Tab.Navigator>
