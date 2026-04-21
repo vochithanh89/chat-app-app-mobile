@@ -23,7 +23,18 @@ const LoginScreen = () => {
       await login(identifier, password);
       navigation.replace("MainApp");
     } catch (error) {
-      Alert.alert("Login Failed", error.response?.data?.message || "Login failed");
+      const message =
+        error.response?.data?.message ||
+        error.message ||
+        "Login failed";
+
+      Alert.alert("Login Failed", message);
+      console.log("Login error details:", {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
     }
   };
 
@@ -41,17 +52,18 @@ const LoginScreen = () => {
 
         {/* Input Fields */}
         <View className="mb-6">
-          {/* Email/Phone Input */}
+          {/* Email Input */}
           <View className="mb-4">
-            <Text className="text-gray-700 mb-2 font-medium">Email or Phone</Text>
+            <Text className="text-gray-700 mb-2 font-medium">Email</Text>
             <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
               <Ionicons name="mail" size={20} color="#9CA3AF" className="mr-3" />
               <TextInput
-                placeholder="Enter your email or phone"
+                placeholder="Enter your email"
                 value={identifier}
                 onChangeText={setIdentifier}
                 className="flex-1 text-gray-900"
                 keyboardType="email-address"
+                autoCapitalize="none"
               />
             </View>
           </View>

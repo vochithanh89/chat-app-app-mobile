@@ -11,6 +11,7 @@ import CallsScreen from "../screens/CallsScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
+import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 import AccountScreen from "../screens/AccountScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
@@ -39,6 +40,9 @@ function HomeStack() {
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="Account" component={AccountScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
@@ -68,6 +72,7 @@ export default function MainNavigator() {
       >
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="MainApp" component={MainTabs} />
       </Stack.Navigator>

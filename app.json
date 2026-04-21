@@ -25,9 +25,13 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "extra": {
+      "apiBaseUrl": "http://192.168.0.19:3333"
+    },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-document-picker"
     ]
   }
 }

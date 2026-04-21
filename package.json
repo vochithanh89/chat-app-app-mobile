@@ -4,7 +4,11 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
+    "start:lan": "expo start --lan --port 8083 --clear",
+    "start:tunnel": "expo start --tunnel --port 8082",
     "android": "expo start --android",
+    "android:lan": "expo start --lan --port 8083 --clear",
+    "android:tunnel": "expo start --tunnel --port 8082",
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
@@ -18,6 +22,7 @@
     "axios": "^1.14.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "54",
+    "expo-document-picker": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-status-bar": "~3.0.9",
     "moti": "^0.30.0",

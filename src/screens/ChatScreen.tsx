@@ -1,513 +1,645 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
   FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
-  Image,
-  Dimensions,
+  View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { RouteProp } from "@react-navigation/native";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 
-// Import new components and hooks
-import ButtonComponent from "../components/common/ButtonComponent";
-import InputComponent from "../components/common/InputComponent";
-import AvatarComponent from "../components/common/AvatarComponent";
-import HeaderComponent from "../components/common/HeaderComponent";
+// API & Context (Giả định theo project của bạn)
+import { conversationAPI, messageAPI } from "../services/api";
+import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromConversation } from "../services/chatMappers";
+import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
 
+/** --- TYPES --- **/
 type RootStackParamList = {
-  HomeMain: undefined;
-  Chat: { user: any };
+  Chat: { user: any; conversationId?: string };
   ChatOptions: { user: any };
 };
 
-type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
-type ChatScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Chat'>;
+type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
+type ChatScreenNavigationProp = StackNavigationProp<RootStackParamList, "Chat">;
+
+interface PendingAttachment {
+  id: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+  type: "image" | "video" | "file";
+}
+
+/** --- CONSTANTS --- **/
+const ZALO_BLUE = "#0068FF";
+const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120";
+const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "😡"];
+const WINDOW_WIDTH = Dimensions.get("window").width;
 
 const ChatScreen = () => {
   const route = useRoute<ChatScreenRouteProp>();
   const navigation = useNavigation<ChatScreenNavigationProp>();
-  const { user } = route.params;
-  const [message, setMessage] = useState('');
-  const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
-  const [showMenu, setShowMenu] = useState({ x: 0, y: 0, visible: false });
-  const [showEmojiPicker, setShowEmojiPicker] = useState({ x: 0, y: 0, visible: false });
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [showReactionDetails, setShowReactionDetails] = useState<{ x: number, y: number, visible: boolean, reaction: any }>({ x: 0, y: 0, visible: false, reaction: null });
+  const { user: authUser } = useAuth();
+  const insets = useSafeAreaInsets();
+  const currentUserId = authUser?.uuid || authUser?.id || null;
+  const { user: routeUser, conversationId: routeConversationId } = route.params;
 
-  // Ẩn tab bar khi vào ChatScreen
+  // Refs
+  const listRef = useRef<FlatList>(null);
+
+  // States
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [conversation, setConversation] = useState<any>(null);
+  const [replyingTo, setReplyingTo] = useState<any>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  
+  // Modal/Overlay States
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [showActions, setShowActions] = useState(false);
+  const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardConversations, setForwardConversations] = useState<any[]>([]);
+  const [selectedForwardTargets, setSelectedForwardTargets] = useState<string[]>([]);
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [forwarding, setForwarding] = useState(false);
+
+  // Hide tab bar on mount
   useTabBarVisibility(true);
-  const messages = [
-    {
-      id: "1",
-      text: "Chào bạn, hôm nay thế nào?",
-      user: "other",
-      time: "18:00",
-      status: "read",
-      reactions: [
-        { emoji: "👍", users: ["Tôi"], count: 1 }
-      ]
-    },
-    {
-      id: "2",
-      text: "Tốt lắm, đang code UI Zalo đây!",
-      user: "me",
-      time: "18:01",
-      status: "read",
-      reactions: [
-        { emoji: "❤️", users: ["Bạn"], count: 1 },
-        { emoji: "😂", users: ["Người khác"], count: 1 }
-      ]
-    },
-    {
-      id: "3",
-      text: "Hay quá! Dùng Tailwind à?",
-      user: "other",
-      time: "18:02",
-      status: "delivered",
-      reactions: []
-    },
-    {
-      id: "4",
-      text: "Đúng rồi, rất tiện lợi!",
-      user: "me",
-      time: "18:03",
-      status: "sent",
-      reactions: []
-    },
-    {
-      id: "5",
-      text: "Ui, trông chuyên nghiệp ghê!",
-      user: "other",
-      time: "18:04",
-      status: "sending",
-      reactions: []
-    }
-  ];
 
-  const handleLongPress = (messageId: string, event: any, isMe: boolean) => {
-    const { pageX, pageY } = event.nativeEvent;
-    const { width, height } = Dimensions.get('window');
-    
-    // Menu dimensions
-    const menuWidth = 176;
-    const menuHeight = 100; // Increased height for context menu
-    const emojiHeight = 80; // Increased height for emoji picker
-    const totalHeight = menuHeight + emojiHeight; // Total height with spacing
-    
-    // Calculate safe positions
-    let safeX = pageX;
-    let safeY = pageY;
-    
-    // Adjust horizontal position based on sender
-    if (isMe) {
-      // For my messages, position menu to the left
-      safeX = pageX - menuWidth - 20;
-      if (safeX < 20) {
-        safeX = 20;
+  /** --- LOGIC XỬ LÝ DỮ LIỆU --- **/
+
+  const loadData = useCallback(async () => {
+    try {
+      const convId = routeConversationId || routeUser?.conversationId;
+      if (!convId) return;
+
+      const [convRes, msgRes] = await Promise.all([
+        conversationAPI.getConversationById(convId),
+        messageAPI.getMessages(convId)
+      ]);
+
+      const rawMessages = msgRes?.data?.messages || msgRes?.messages || [];
+      const normalized = rawMessages
+        .map((m: any) => normalizeMessage(m, currentUserId))
+        .sort((a: any, b: any) => new Date(b.rawTime).getTime() - new Date(a.rawTime).getTime());
+
+      setMessages(normalized);
+      if (convRes?.data?.conversation) {
+        setConversation(normalizeConversation(convRes.data.conversation, currentUserId));
       }
-    } else {
-      // For other messages, position menu to the right
-      if (pageX + menuWidth > width) {
-        safeX = width - menuWidth - 20;
-      }
-      if (safeX < 20) {
-        safeX = 20;
-      }
+    } catch (error) {
+      console.error("Load Chat Error:", error);
+    } finally {
+      setLoading(false);
     }
-    
-    // Prevent menu from going off screen vertically
-    if (pageY + totalHeight > height) {
-      safeY = height - totalHeight - 20;
-    }
-    if (pageY - totalHeight < 0) {
-      safeY = totalHeight + 20;
-    }
-    
-    setSelectedMessage(messageId);
-    setShowMenu({ x: safeX, y: safeY, visible: true });
-  };
+  }, [routeConversationId, currentUserId]);
 
-  const handleMenuAction = (action: string) => {
-    switch (action) {
-      case 'reply':
-        setReplyingTo(selectedMessage);
-        break;
-      case 'forward':
-        // Handle forward logic
-        break;
-      case 'revoke':
-        // Handle revoke logic
-        break;
-      case 'copy':
-        // Handle copy logic
-        break;
-      case 'pin':
-        // Handle pin logic
-        break;
-      case 'delete':
-        // Handle delete logic
-        break;
-    }
-    setShowMenu({ x: 0, y: 0, visible: false });
-    setSelectedMessage(null);
-  };
-
-  const handleEmojiSelect = (emoji: string) => {
-    console.log(`Added reaction ${emoji} to message ${selectedMessage}`);
-    setShowMenu({ x: 0, y: 0, visible: false });
-    setSelectedMessage(null);
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'sending':
-        return <Ionicons name="time" size={12} color="#9CA3AF" />;
-      case 'sent':
-        return <Ionicons name="checkmark" size={12} color="#9CA3AF" />;
-      case 'delivered':
-        return <Ionicons name="checkmark-done" size={12} color="#9CA3AF" />;
-      case 'read':
-        return <Ionicons name="checkmark-done" size={12} color="#0068FF" />;
-      default:
-        return null;
-    }
-  };
-
-  const renderReactions = (reactions: any[]) => {
-    if (reactions.length === 0) return null;
-    
-    return (
-      <View className="flex-row flex-wrap mt-2">
-        {reactions.map((reaction, index) => (
-          <TouchableOpacity 
-            key={index}
-            className="flex-row items-center bg-gray-100 rounded-full px-2 py-1 mr-1 mb-1"
-            onPress={(event) => handleReactionPress(reaction, event)}
-          >
-            <Text className="text-sm mr-1">{reaction.emoji}</Text>
-            <Text className="text-xs text-gray-600">{reaction.count}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
-
-  const handleReactionPress = (reaction: any, event: any) => {
-    const { pageX, pageY } = event.nativeEvent;
-    const { width, height } = Dimensions.get('window');
-    
-    // Modal dimensions
-    const modalWidth = 200;
-    const modalHeight = 150;
-    
-    // Calculate safe positions
-    let safeX = pageX;
-    let safeY = pageY;
-    
-    // Prevent modal from going off screen horizontally
-    if (pageX + modalWidth > width) {
-      safeX = width - modalWidth - 20;
-    }
-    if (pageX - modalWidth < 0) {
-      safeX = 20;
-    }
-    
-    // Prevent modal from going off screen vertically
-    if (pageY + modalHeight > height) {
-      safeY = height - modalHeight - 20;
-    }
-    if (pageY - modalHeight < 0) {
-      safeY = modalHeight + 20;
-    }
-    
-    setShowReactionDetails({ 
-      x: safeX, 
-      y: safeY, 
-      visible: true, 
-      reaction: reaction 
-    });
-  };
-
-  const isGroupChat = false;
-
-  const renderReactionDetails = () => {
-    if (!showReactionDetails.visible || !showReactionDetails.reaction) return null;
-
-    const { reaction } = showReactionDetails;
-    
-    return (
-      <TouchableOpacity 
-        className="absolute inset-0 bg-black/50" 
-        onPress={() => setShowReactionDetails({ x: 0, y: 0, visible: false, reaction: null })}
-      >
-        <View 
-          className="absolute bg-white rounded-lg shadow-lg p-3 min-w-48"
-          style={{ 
-            top: showReactionDetails.y, 
-            left: showReactionDetails.x 
-          }}
-        >
-          <View className="flex-row items-center mb-3 pb-2 border-b border-gray-100">
-            <Text className="text-lg mr-2">{reaction.emoji}</Text>
-            <Text className="font-semibold text-gray-800">{reaction.count} người</Text>
-          </View>
-          
-          {isGroupChat ? (
-            // Group chat - show list of users
-            <View className="max-h-32">
-              {reaction.users.map((user: string, index: number) => (
-                <View key={index} className="flex-row items-center py-2">
-                  <Image
-                    source={{ uri: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=32&h=32&fit=crop&crop=face" }}
-                    className="w-8 h-8 rounded-full mr-3"
-                  />
-                  <Text className="text-sm text-gray-700">{user}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            // Single chat - show the other person
-            <View className="flex-row items-center py-2">
-              <Image
-                source={{ uri: user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=32&h=32&fit=crop&crop=face" }}
-                className="w-8 h-8 rounded-full mr-3"
-              />
-              <Text className="text-sm text-gray-700">{user?.name || "Người dùng"}</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const getReplyingMessage = () => {
-    if (!replyingTo) return null;
-    return messages.find(msg => msg.id === replyingTo);
-  };
-
-  const cancelReply = () => {
-    setReplyingTo(null);
-  };
-
-  const renderMessage = ({ item }: { item: any }) => (
-    <View className={`mb-4 ${item.user === "me" ? "flex-row-reverse" : "flex-row"}`}>
-      <TouchableOpacity 
-        onLongPress={(event) => handleLongPress(item.id, event, item.user === "me")}
-        delayLongPress={1000}
-      >
-        <View>
-          <View className={`${item.user === "me" ? "max-w-[95%]" : "max-w-[95%]"} ${item.user === "me" ? "bg-blue-500" : "bg-white"} rounded-2xl p-3 shadow-sm`}>
-            <Text className={`text-sm ${item.user === "me" ? "text-white" : "text-gray-800"}`}>
-              {item.text}
-            </Text>
-            
-            {/* Time and Status */}
-            <View className={`flex-row items-center mt-1 ${item.user === "me" ? "justify-end" : "justify-start"}`}>
-              <Text className={`text-xs ${item.user === "me" ? "text-blue-100" : "text-gray-400"} mr-1`}>
-                {item.time}
-              </Text>
-              {item.user === "me" && getStatusIcon(item.status)}
-            </View>
-          </View>
-          
-          {/* Reactions - Outside message bubble */}
-          {renderReactions(item.reactions)}
-        </View>
-      </TouchableOpacity>
-    </View>
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+      const interval = setInterval(loadData, 5000); // Polling 5s
+      return () => clearInterval(interval);
+    }, [loadData])
   );
 
-  return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="bg-blue-500 px-4 pt-3 pb-4 shadow-sm">
-        <View className="flex-row items-center">
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            className="p-2 rounded-full mr-3"
-          >
-            <Ionicons name="arrow-back" size={20} color="white" />
-          </TouchableOpacity>
-          
-          <View className="relative">
-            <Image
-              source={{ uri: user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=40&h=40&fit=crop&crop=face" }}
-              className="w-12 h-12 rounded-full mr-3 border-2 border-white shadow-sm"
-            />
-            {user?.online && (
-              <View className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white" />
-            )}
-          </View>
-          
-          <View className="flex-1">
-            <Text className="font-bold text-lg text-white">{user?.name || "Người dùng"}</Text>
-            <View className="flex-row items-center">
-              <Text className="text-blue-100 text-sm mr-1">
-                {user?.online ? "Đang hoạt động" : "Offline"}
-              </Text>
-            </View>
-          </View>
-          
-          <View className="flex-row">
-            <TouchableOpacity className="p-2 bg-white/20 rounded-full mr-2">
-              <Ionicons name="videocam" size={20} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity className="p-2 bg-white/20 rounded-full mr-2">
-              <Ionicons name="call" size={20} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity className="p-2 bg-white/20 rounded-full" onPress={() => navigation.navigate('ChatOptions', { user })}>
-              <Ionicons name="ellipsis-vertical" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+  const messageById = useMemo(() => {
+    return messages.reduce((acc: Record<string, any>, item: any) => {
+      if (item?.id) {
+        acc[item.id] = item;
+      }
+      return acc;
+    }, {});
+  }, [messages]);
 
-      <FlatList
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        className="flex-1 p-4"
-        contentContainerStyle={{ paddingBottom: 100 }}
-      />
+  /** --- ACTIONS --- **/
 
-      {/* Input bar*/}
-      <View className="bg-white px-3 py-2 border-t border-gray-200">
-        {/* Reply UI */}
-        {replyingTo && (
-          <View className="flex-row items-center bg-gray-50 p-2 mb-2 rounded-lg">
-            <View className="w-1 bg-blue-500 h-6 mr-2 rounded-full" />
-            <View className="flex-1">
-              <Text className="text-xs text-gray-500 mb-1">Đang trả lời</Text>
-              <Text className="text-sm text-gray-800 line-clamp-1">
-                {getReplyingMessage()?.text}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={cancelReply} className="p-1">
-              <Ionicons name="close" size={16} color="#666" />
-            </TouchableOpacity>
-          </View>
-        )}
-        
-        <View className="flex-row items-center">
-          {/* Paperclip icon */}
-          <TouchableOpacity className="mr-3">
-            <Ionicons name="attach" size={22} color="#666" />
-          </TouchableOpacity>
-          
-          {/* Text input */}
-          <View className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-3">
-            <TextInput
-              placeholder="Type a message..."
-              placeholderTextColor="#999"
-              value={message}
-              onChangeText={setMessage}
-              className="text-sm text-gray-800 -mt-1"
-              multiline={false}
-            />
-          </View>
-          
-          {/* Emoji icon - only show when input is empty */}
-          {message.length === 0 && (
-            <TouchableOpacity className="mr-3">
-              <Ionicons name="happy-outline" size={22} color="#666" />
-            </TouchableOpacity>
-          )}
-          
-          {/* Send button - only show when there's content */}
-          {message.length > 0 && (
-            <TouchableOpacity className="bg-blue-400 p-2 rounded-full">
-              <Ionicons name="send" size={16} color="white" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+  const handleSend = async () => {
+    if ((!message.trim() && pendingAttachments.length === 0) || sending) return;
 
-      {/* Context Menu Overlay */}
-    {showMenu.visible && (
-      <TouchableOpacity 
-        className="absolute inset-0 bg-black/50" 
-        onPress={() => setShowMenu({ x: 0, y: 0, visible: false })}
-      >
-        {/* Emoji Picker */}
-        <View 
-          className="absolute bg-white rounded-lg shadow-lg p-3"
-          style={{ top: showMenu.y - 85, left: showMenu.x }}
+    try {
+      setSending(true);
+      const convId = routeConversationId || conversation?.id;
+      
+      let attachmentIds: string[] = [];
+      if (pendingAttachments.length > 0) {
+        const uploads = await Promise.all(
+          pendingAttachments.map(item => messageAPI.uploadAttachment(item))
+        );
+        attachmentIds = uploads.map(u => u?.data?.attachment?.id).filter(Boolean);
+      }
+
+      await messageAPI.sendMessage(convId, {
+        content: message.trim() || undefined,
+        reply_to_message_id: replyingTo?.id,
+        attachment_ids: attachmentIds
+      });
+
+      setMessage("");
+      setReplyingTo(null);
+      setPendingAttachments([]);
+      loadData();
+    } catch (error) {
+      Alert.alert("Lỗi", "Không thể gửi tin nhắn");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      const newAssets: PendingAttachment[] = result.assets.map(a => ({
+        id: Math.random().toString(),
+        uri: a.uri,
+        name: a.fileName || "image.jpg",
+        mimeType: a.mimeType || "image/jpeg",
+        type: "image"
+      }));
+      setPendingAttachments(prev => [...prev, ...newAssets]);
+    }
+    setShowAttachmentPicker(false);
+  };
+
+  const openForwardModal = async () => {
+    const currentConversationId = routeConversationId || conversation?.id || routeUser?.conversationId;
+
+    setShowActions(false);
+    setShowForwardModal(true);
+    setSelectedForwardTargets([]);
+    setForwardLoading(true);
+
+    try {
+      const response = await conversationAPI.getConversations();
+      const items = response?.data?.conversations || response?.conversations || [];
+      const normalized = Array.isArray(items)
+        ? items
+            .map((item: any) => normalizeConversation(item, currentUserId))
+            .filter((item: any) => item?.id && item.id !== currentConversationId)
+        : [];
+      setForwardConversations(normalized);
+    } catch (error) {
+      console.log("Load forward conversations error:", error);
+      Alert.alert("Error", "Failed to load conversations for forwarding");
+      setShowForwardModal(false);
+    } finally {
+      setForwardLoading(false);
+    }
+  };
+
+  const toggleForwardTarget = (conversationId: string) => {
+    setSelectedForwardTargets((prev) =>
+      prev.includes(conversationId)
+        ? prev.filter((id) => id !== conversationId)
+        : [...prev, conversationId],
+    );
+  };
+
+  const handleForwardSelected = async () => {
+    const messageId = selectedMessage?.id;
+    if (!messageId || selectedForwardTargets.length === 0 || forwarding) {
+      return;
+    }
+
+    try {
+      setForwarding(true);
+      await messageAPI.forwardMessage(messageId, selectedForwardTargets);
+      setShowForwardModal(false);
+      setSelectedForwardTargets([]);
+      setSelectedMessage(null);
+      Alert.alert("Success", "Message forwarded successfully");
+    } catch (error) {
+      console.log("Forward message error:", error);
+      Alert.alert("Error", "Failed to forward message");
+    } finally {
+      setForwarding(false);
+    }
+  };
+
+  const handleDeleteMessage = async () => {
+    const messageId = selectedMessage?.id;
+    if (!messageId) {
+      return;
+    }
+
+    try {
+      await messageAPI.deleteForMe(messageId);
+      setShowActions(false);
+      setSelectedMessage(null);
+      await loadData();
+    } catch (error) {
+      console.log("Delete message error:", error);
+      Alert.alert("Error", "Failed to delete message");
+    }
+  };
+
+  const handleToggleReaction = async (messageItem: any, emoji: string) => {
+    const messageId = messageItem?.id;
+    if (!messageId) {
+      return;
+    }
+
+    const myReaction = Array.isArray(messageItem?.reactions)
+      ? messageItem.reactions.find((reaction: any) => reaction?.emoji === emoji && reaction?.reactedByMe)
+      : null;
+
+    try {
+      if (myReaction) {
+        await messageAPI.removeReaction(messageId, emoji);
+      } else {
+        await messageAPI.reactToMessage(messageId, emoji);
+      }
+
+      setShowActions(false);
+      setSelectedMessage(null);
+      await loadData();
+    } catch (error) {
+      console.log("Toggle reaction error:", error);
+      Alert.alert("Error", "Failed to update reaction");
+    }
+  };
+
+  /** --- RENDER HELPERS --- **/
+
+  const renderMessage = ({ item }: { item: any }) => {
+    const isMine = item.user === "me";
+    
+    return (
+      <View style={[styles.messageContainer, isMine ? styles.mineAlign : styles.otherAlign]}>
+        <TouchableOpacity
+          onLongPress={() => {
+            setSelectedMessage(item);
+            setShowActions(true);
+          }}
+          delayLongPress={500}
+          activeOpacity={0.8}
         >
-          <View className="flex-row justify-between items-center">
-            {["❤️", "👍", "😂", "😮", "😢", "😡"].map((emoji, index) => (
-              <TouchableOpacity 
-                key={index}
-                className="w-10 h-10 items-center justify-center"
-                onPress={() => handleEmojiSelect(emoji)}
+          <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+            {/* Reply Preview inside bubble */}
+            {item.replyToMessageId && (
+              <View style={styles.replyInBubble}>
+                <Text style={styles.replyText} numberOfLines={1}>
+                  {messageById[item.replyToMessageId]?.content || "Đang trả lời tin nhắn..."}
+                </Text>
+              </View>
+            )}
+
+            <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
+              {item.content || item.text}
+            </Text>
+            
+            <View style={styles.messageFooter}>
+              <Text style={styles.timeText}>{item.time}</Text>
+              {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
+            </View>
+          </View>
+        </TouchableOpacity>
+        
+        {/* Reactions Row */}
+        {item.reactions?.length > 0 && (
+          <View style={[styles.reactionRow, isMine ? styles.reactionMine : styles.reactionOther]}>
+            {item.reactions.map((r: any, idx: number) => (
+              <TouchableOpacity
+                key={idx}
+                style={[styles.reactionTag, r.reactedByMe ? styles.reactionTagActive : null]}
+                onPress={() => handleToggleReaction(item, r.emoji)}
               >
-                <Text className="text-2xl">{emoji}</Text>
+                <Text style={{ fontSize: 12 }}>{r.emoji} {r.count}</Text>
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        )}
+      </View>
+    );
+  };
 
-        {/* Context Menu */}
-        <View 
-          className="absolute bg-white rounded-lg shadow-lg p-2 min-w-44"
-          style={{ top: showMenu.y, left: showMenu.x }}
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <Image source={{ uri: routeUser?.avatar || FALLBACK_AVATAR }} style={styles.avatar} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{routeUser?.name || "Người dùng"}</Text>
+          <Text style={styles.headerSub}>{routeUser?.online ? "Vừa mới truy cập" : "Offline"}</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Ionicons name="call-outline" size={22} color="white" style={{ marginRight: 15 }} />
+          <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
+          <TouchableOpacity onPress={() => navigation.navigate("ChatOptions", { user: routeUser })}>
+            <Ionicons name="menu-outline" size={26} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Message List */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        style={{ flex: 1 }}
+      >
+        {loading ? (
+          <ActivityIndicator style={{ flex: 1 }} color={ZALO_BLUE} />
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={item => item.id}
+            inverted // Đảo ngược list để tối ưu chat
+            contentContainerStyle={styles.listContent}
+          />
+        )}
+
+        {/* Composer */}
+        <View style={[styles.composer, { paddingBottom: insets.bottom || 10 }]}>
+          {replyingTo && (
+            <View style={styles.replyBar}>
+              <View style={styles.replySide} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.replyName}>Trả lời {replyingTo.sender?.name}</Text>
+                <Text style={styles.replyContent} numberOfLines={1}>{replyingTo.content}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReplyingTo(null)}>
+                <Ionicons name="close-circle" size={20} color="#999" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={styles.inputRow}>
+            <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
+              <Ionicons name="add-circle-outline" size={28} color="#666" />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.input}
+              placeholder="Tin nhắn"
+              multiline
+              value={message}
+              onChangeText={setMessage}
+            />
+            {message.length > 0 ? (
+              <TouchableOpacity onPress={handleSend}>
+                <Ionicons name="send" size={24} color={ZALO_BLUE} />
+              </TouchableOpacity>
+            ) : (
+              <Ionicons name="happy-outline" size={26} color="#666" />
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* Modals & Overlays */}
+      <Modal visible={showActions} transparent animationType="fade">
+        <Pressable style={styles.overlay} onPress={() => setShowActions(false)}>
+          <View style={styles.actionSheet}>
+            <View style={styles.reactionPicker}>
+              {REACTION_EMOJIS.map(emoji => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={styles.emojiBtn}
+                  onPress={() => handleToggleReaction(selectedMessage, emoji)}
+                >
+                  <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.actionMenu}>
+              <ActionItem icon="arrow-undo-outline" label="Trả lời" onPress={() => { setReplyingTo(selectedMessage); setShowActions(false); }} />
+              <ActionItem icon="copy-outline" label="Sao chép" />
+              <ActionItem icon="share-outline" label="Chuyển tiếp" onPress={openForwardModal} />
+              <ActionItem icon="trash-outline" label="Xóa" color="#FF3B30" onPress={handleDeleteMessage} />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showForwardModal} transparent animationType="slide">
+        <Pressable
+          style={styles.overlay}
+          onPress={() => {
+            setShowForwardModal(false);
+            setSelectedForwardTargets([]);
+          }}
         >
-          <TouchableOpacity 
-            className="flex-row items-center p-3 border-b border-gray-100"
-            onPress={() => handleMenuAction("reply")}
-          >
-            <Ionicons name="arrow-undo" size={16} color="#0068FF" className="mr-3" />
-            <Text className="text-sm text-gray-700">Trả lời</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="flex-row items-center p-3 border-b border-gray-100"
-            onPress={() => handleMenuAction("forward")}
-          >
-            <Ionicons name="share" size={16} color="#666" className="mr-3" />
-            <Text className="text-sm text-gray-700">Chuyển tiếp</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="flex-row items-center p-3 border-b border-gray-100"
-            onPress={() => handleMenuAction("revoke")}
-          >
-            <Ionicons name="refresh" size={16} color="#666" className="mr-3" />
-            <Text className="text-sm text-gray-700">Thu hồi</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="flex-row items-center p-3 border-b border-gray-100"
-            onPress={() => handleMenuAction("copy")}
-          >
-            <Ionicons name="copy" size={16} color="#666" className="mr-3" />
-            <Text className="text-sm text-gray-700">Sao chép</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="flex-row items-center p-3 border-b border-gray-100"
-            onPress={() => handleMenuAction("pin")}
-          >
-            <Ionicons name="push" size={16} color="#0068FF" className="mr-3" />
-            <Text className="text-sm text-gray-700">Ghim</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="flex-row items-center p-3"
-            onPress={() => handleMenuAction("delete")}
-          >
-            <Ionicons name="trash" size={16} color="#EF4444" className="mr-3" />
-            <Text className="text-sm text-red-500">Xóa</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    )}
+          <Pressable style={styles.forwardSheet} onPress={() => {}}>
+            <Text style={styles.forwardTitle}>Forward message</Text>
 
-    {/* Reaction Details Overlay */}
-    {renderReactionDetails()}
+            {forwardLoading ? (
+              <View style={styles.forwardLoadingWrap}>
+                <ActivityIndicator color={ZALO_BLUE} />
+              </View>
+            ) : (
+              <FlatList
+                data={forwardConversations}
+                keyExtractor={(item) => item.id}
+                style={styles.forwardList}
+                renderItem={({ item }) => {
+                  const selected = selectedForwardTargets.includes(item.id);
+
+                  return (
+                    <TouchableOpacity
+                      style={styles.forwardRow}
+                      onPress={() => toggleForwardTarget(item.id)}
+                    >
+                      <Image
+                        source={{ uri: item.avatarUrl || FALLBACK_AVATAR }}
+                        style={styles.forwardAvatar}
+                      />
+                      <Text style={styles.forwardName} numberOfLines={1}>{item.name}</Text>
+                      <Ionicons
+                        name={selected ? "checkmark-circle" : "ellipse-outline"}
+                        size={22}
+                        color={selected ? ZALO_BLUE : "#9CA3AF"}
+                      />
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.forwardEmptyWrap}>
+                    <Text style={styles.forwardEmptyText}>No conversations available</Text>
+                  </View>
+                }
+              />
+            )}
+
+            <View style={styles.forwardActions}>
+              <TouchableOpacity
+                style={styles.forwardCancelButton}
+                onPress={() => {
+                  setShowForwardModal(false);
+                  setSelectedForwardTargets([]);
+                }}
+              >
+                <Text style={styles.forwardCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.forwardSendButton,
+                  (selectedForwardTargets.length === 0 || forwarding) ? styles.forwardSendButtonDisabled : null,
+                ]}
+                onPress={handleForwardSelected}
+                disabled={selectedForwardTargets.length === 0 || forwarding}
+              >
+                {forwarding ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <Text style={styles.forwardSendText}>Forward</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Attachment Picker Modal */}
+      <Modal visible={showAttachmentPicker} transparent animationType="slide">
+        <Pressable style={styles.overlay} onPress={() => setShowAttachmentPicker(false)}>
+          <View style={styles.attachmentSheet}>
+            <TouchableOpacity style={styles.attachBtn} onPress={pickImage}>
+              <Ionicons name="image" size={30} color="#4CD964" />
+              <Text>Ảnh</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.attachBtn}>
+              <Ionicons name="document" size={30} color="#FF9500" />
+              <Text>Tài liệu</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
+
+const ActionItem = ({ icon, label, onPress, color = "#333" }: any) => (
+  <TouchableOpacity style={styles.actionItem} onPress={onPress}>
+    <Ionicons name={icon} size={20} color={color} />
+    <Text style={[styles.actionLabel, { color }]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+/** --- STYLES --- **/
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#F4F5F7" },
+  header: {
+    height: 60,
+    backgroundColor: ZALO_BLUE,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 15,
+  },
+  headerTitle: { color: "white", fontSize: 18, fontWeight: "600" },
+  headerSub: { color: "#D1D1D1", fontSize: 12 },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginHorizontal: 10 },
+  headerActions: { flexDirection: "row", alignItems: "center" },
+  
+  listContent: { padding: 15 },
+  messageContainer: { marginBottom: 15, maxWidth: "80%" },
+  mineAlign: { alignSelf: "flex-end" },
+  otherAlign: { alignSelf: "flex-start" },
+  
+  bubble: { borderRadius: 18, padding: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, elevation: 1 },
+  bubbleMine: { backgroundColor: ZALO_BLUE },
+  bubbleOther: { backgroundColor: "white" },
+  replyInBubble: { borderLeftWidth: 2, borderLeftColor: "#93C5FD", paddingLeft: 8, marginBottom: 6 },
+  replyText: { fontSize: 12, color: "#374151" },
+  
+  messageText: { fontSize: 16, lineHeight: 22 },
+  textWhite: { color: "white" },
+  textBlack: { color: "#1A1A1A" },
+  
+  messageFooter: { flexDirection: "row", justifyContent: "flex-end", marginTop: 4, alignItems: "center" },
+  timeText: { fontSize: 11, color: "#AAA", marginRight: 4 },
+  
+  composer: { backgroundColor: "white", borderTopWidth: 1, borderTopColor: "#E5E5E5", padding: 10 },
+  inputRow: { flexDirection: "row", alignItems: "center" },
+  input: { flex: 1, backgroundColor: "#F0F0F0", borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, marginHorizontal: 10, maxHeight: 100 },
+  
+  replyBar: { flexDirection: "row", backgroundColor: "#F9F9F9", padding: 8, borderRadius: 8, marginBottom: 10, alignItems: "center" },
+  replySide: { width: 3, height: "100%", backgroundColor: ZALO_BLUE, marginRight: 10 },
+  replyName: { fontWeight: "bold", fontSize: 12, color: ZALO_BLUE },
+  replyContent: { fontSize: 13, color: "#666" },
+
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
+  actionSheet: { width: "85%", backgroundColor: "white", borderRadius: 15, overflow: "hidden" },
+  reactionPicker: { flexDirection: "row", justifyContent: "space-around", padding: 15, borderBottomWidth: 1, borderBottomColor: "#EEE" },
+  emojiBtn: { paddingHorizontal: 6, paddingVertical: 4 },
+  actionMenu: { paddingVertical: 10 },
+  actionItem: { flexDirection: "row", padding: 15, alignItems: "center" },
+  actionLabel: { marginLeft: 15, fontSize: 16 },
+  
+  reactionRow: { flexDirection: "row", marginTop: -5 },
+  reactionMine: { justifyContent: "flex-end", marginRight: 10 },
+  reactionOther: { justifyContent: "flex-start", marginLeft: 10 },
+  reactionTag: { backgroundColor: "white", borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: "#EEE" },
+  reactionTagActive: { backgroundColor: "#E0EEFF", borderColor: "#93C5FD" },
+
+  forwardSheet: {
+    width: "92%",
+    maxHeight: "75%",
+    backgroundColor: "white",
+    borderRadius: 14,
+    padding: 16,
+  },
+  forwardTitle: { fontSize: 16, fontWeight: "700", color: "#1F2937", marginBottom: 12 },
+  forwardLoadingWrap: { paddingVertical: 24, alignItems: "center" },
+  forwardList: { maxHeight: 360 },
+  forwardRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
+  forwardAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
+  forwardName: { flex: 1, fontSize: 14, color: "#111827" },
+  forwardEmptyWrap: { paddingVertical: 20, alignItems: "center" },
+  forwardEmptyText: { color: "#6B7280" },
+  forwardActions: { flexDirection: "row", marginTop: 12 },
+  forwardCancelButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginRight: 8,
+  },
+  forwardCancelText: { color: "#374151", fontWeight: "600" },
+  forwardSendButton: {
+    flex: 1,
+    backgroundColor: ZALO_BLUE,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  forwardSendButtonDisabled: { opacity: 0.5 },
+  forwardSendText: { color: "white", fontWeight: "700" },
+
+  attachmentSheet: { width: "100%", backgroundColor: "white", position: "absolute", bottom: 0, padding: 20, flexDirection: "row", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  attachBtn: { alignItems: "center", marginRight: 30 }
+});
 
 export default ChatScreen;

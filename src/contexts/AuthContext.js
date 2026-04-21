@@ -3,6 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI } from '../services/api';
 
 const AuthContext = createContext();
+const getResponseData = (response) => {
+  const payload = response?.data?.data || response?.data || response || null;
+  return payload?.user || payload;
+};
 
 // Hook để sử dụng AuthContext
 export const useAuth = () => {
@@ -41,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         // Xác thực token bằng cách lấy thông tin người dùng
         const profileResponse = await userAPI.getProfile();
         // Kiểm tra trả response structure và lấy dữ liệu đúng
-        const userData = profileResponse.data || profileResponse.data.data;
+        const userData = getResponseData(profileResponse);
         setUser(userData);
         setIsAuthenticated(true);
       } else if (token && skipProfileCheck) {
@@ -72,7 +76,7 @@ export const AuthProvider = ({ children }) => {
       // Lấy thông tin người dùng sau khi đăng nhập thành công
       const profileResponse = await userAPI.getProfile();
       // Kiểm tra trả response structure và lấy dữ liệu đúng
-      const userData = profileResponse.data.data || profileResponse.data;
+      const userData = getResponseData(profileResponse);
       setUser(userData);
       setIsAuthenticated(true);
       
@@ -124,7 +128,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await userAPI.updateProfile(profileData);
       // Kiểm tra trả response structure và lấy dữ liệu đúng
-      const userData = response.data || response.data.data;
+      const userData = getResponseData(response);
       setUser(userData);
       return response;
     } catch (error) {
@@ -148,7 +152,7 @@ export const AuthProvider = ({ children }) => {
       const response = await userAPI.uploadAvatar(imageUri);
       console.log('Upload Avatar Response:', JSON.stringify(response, null, 2));
       // Kiểm tra trả response structure và lấy dữ liệu đúng
-      const userData = response.data || response.data.data;
+      const userData = getResponseData(response);
       console.log('User Data to set:', userData);
       setUser(userData);
       return response;

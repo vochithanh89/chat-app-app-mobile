@@ -1,11 +1,63 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 // Lưu trữ token trong bộ nhớ khi AsyncStorage thất bại
 let memoryToken = null;
 let memoryRefreshToken = null;
 
-const API_BASE_URL = "http://192.168.1.39:3333";
+const resolveApiBaseUrl = () => {
+  const envUrl = (process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
+  if (envUrl) {
+    return envUrl;
+  }
+
+  const configApiUrl = (
+    Constants.expoConfig?.extra?.apiBaseUrl ||
+    Constants.manifest2?.extra?.expoClient?.extra?.apiBaseUrl ||
+    Constants.manifest?.extra?.apiBaseUrl ||
+    ""
+  ).trim();
+  if (configApiUrl) {
+    return configApiUrl;
+  }
+
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    Constants.manifest?.debuggerHost ||
+    "";
+  const host = hostUri.split(":")[0];
+
+  const isLocalIpHost = /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)$/.test(
+    host,
+  );
+
+  if (host && isLocalIpHost) {
+    return `http://${host}:3333`;
+  }
+
+  return "http://127.0.0.1:3333";
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+
+const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
+
+const extractTokens = (response) => {
+  const payload = getPayloadData(response);
+
+  return {
+    accessToken:
+      payload.accessToken ||
+      payload.token ||
+      response?.data?.accessToken ||
+      response?.data?.token ||
+      null,
+    refreshToken: payload.refreshToken || response?.data?.refreshToken || null,
+  };
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -76,7 +128,10 @@ api.interceptors.response.use(
           },
         );
 
-        const { accessToken } = response.data.data;
+        const { accessToken } = extractTokens(response);
+        if (!accessToken) {
+          throw new Error("Khong lay duoc access token tu API refresh");
+        }
         await AsyncStorage.setItem("accessToken", accessToken);
         memoryToken = accessToken; // Cập nhật memory token
 
@@ -117,16 +172,24 @@ api.interceptors.response.use(
 // API xác thực người dùng
 export const authAPI = {
   // Đăng nhập
-  login: async (email, password) => {
-    console.log('Login request:', { email, password: '***' });
-    
+  login: async (identifier, password) => {
+    console.log("Login request:", {
+      identifier,
+      password: "***",
+      API_BASE_URL,
+    });
+
     const response = await api.post("/api/v1/auth/login", {
-      email,
+      email: identifier,
+      identifier,
       password,
     });
-    
 
-    const { token: accessToken, refreshToken } = response.data.data;
+    const { accessToken, refreshToken } = extractTokens(response);
+    if (!accessToken || !refreshToken) {
+      console.log("Unexpected login response:", response?.data);
+      throw new Error("API login khong tra ve day du accessToken/refreshToken");
+    }
     try {
       await AsyncStorage.setItem("accessToken", accessToken);
       await AsyncStorage.setItem("refreshToken", refreshToken);
@@ -142,23 +205,18 @@ export const authAPI = {
   // Gửi OTP cho quên mật khẩu
   sendOTPForgotPassword: async (email) => {
     const response = await api.post(
-      "/api/v1/users/send-otp-forgot-password",
-      null,
-      {
-        params: { email },
-      },
+      "/api/v1/auth/forgot-password",
+      { email },
     );
     return response.data;
   },
 
   // Reset mật khẩu
-  resetPassword: async (email, otp, newPassword) => {
-    const response = await api.post("/api/v1/users/reset-password", null, {
-      params: {
-        email,
-        otp,
-        newPassword,
-      },
+  resetPassword: async (token, newPassword, confirmPassword) => {
+    const response = await api.post("/api/v1/auth/reset-password", {
+      token,
+      password: newPassword,
+      password_confirmation: confirmPassword,
     });
     return response.data;
   },
@@ -181,15 +239,23 @@ export const authAPI = {
 
   // Gửi OTP
   sendOTP: async (email) => {
-    const response = await api.post("/api/v1/users/send-otp", null, {
-      params: { email },
+    const response = await api.post("/api/v1/auth/resend-otp", {
+      email,
+    });
+    return response.data;
+  },
+
+  verifyEmail: async (email, otp) => {
+    const response = await api.post("/api/v1/auth/verify-email", {
+      email,
+      otp,
     });
     return response.data;
   },
 
   // Đăng ký
   register: async (userData) => {
-    const response = await api.post("/api/v1/users/register", userData);
+    const response = await api.post("/api/v1/auth/register", userData);
     return response.data;
   },
 };
@@ -316,6 +382,104 @@ export const friendshipAPI = {
     const response = await api.delete(`/api/v1/blocks/${userUuid}`);
     return response.data;
   }
+};
+
+export const conversationAPI = {
+  getConversations: async () => {
+    const response = await api.get("/api/v1/conversations");
+    return response.data;
+  },
+
+  getConversationById: async (conversationId) => {
+    const response = await api.get(`/api/v1/conversations/${conversationId}`);
+    return response.data;
+  },
+
+  createDirectConversation: async (userId) => {
+    const response = await api.post("/api/v1/conversations/direct", {
+      user_id: userId,
+    });
+    return response.data;
+  },
+
+  markRead: async (conversationId, lastMessageId = null) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/read`, {
+      last_message_id: lastMessageId,
+    });
+    return response.data;
+  },
+};
+
+export const messageAPI = {
+  getMessages: async (conversationId, params = {}) => {
+    const response = await api.get(`/api/v1/conversations/${conversationId}/messages`, {
+      params,
+    });
+    return response.data;
+  },
+
+  sendMessage: async (conversationId, payload) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/messages`, payload);
+    return response.data;
+  },
+
+  uploadAttachment: async (file) => {
+    const formData = new FormData();
+    const fileName = file.name || `upload-${Date.now()}`;
+    const mimeType = file.mimeType || file.type || "application/octet-stream";
+
+    if (Platform.OS === "web") {
+      if (file.file instanceof File) {
+        formData.append("file", file.file, fileName);
+      } else if (file.uri) {
+        const blobResponse = await fetch(file.uri);
+        const blob = await blobResponse.blob();
+        formData.append("file", blob, fileName);
+      } else {
+        throw new Error("No browser file payload available for upload");
+      }
+    } else {
+      formData.append("file", {
+        uri: file.uri,
+        type: mimeType,
+        name: fileName,
+      });
+    }
+
+    const response = await api.post("/api/v1/messages/upload", formData);
+    return response.data;
+  },
+
+  recallMessage: async (messageId) => {
+    const response = await api.post(`/api/v1/messages/${messageId}/recall`);
+    return response.data;
+  },
+
+  deleteForMe: async (messageId) => {
+    const response = await api.post(`/api/v1/messages/${messageId}/delete`);
+    return response.data;
+  },
+
+  forwardMessage: async (messageId, conversationIds) => {
+    const response = await api.post(`/api/v1/messages/${messageId}/forward`, {
+      conversation_ids: conversationIds,
+    });
+    return response.data;
+  },
+
+  reactToMessage: async (messageId, emoji) => {
+    const response = await api.post(`/api/v1/messages/${messageId}/reactions`, {
+      emoji,
+    });
+    return response.data;
+  },
+
+  removeReaction: async (messageId, emoji) => {
+    const response = await api.delete(
+      `/api/v1/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+    );
+    return response.data;
+  },
 };
 
 export default api;
