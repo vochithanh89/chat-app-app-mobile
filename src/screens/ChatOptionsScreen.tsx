@@ -5,11 +5,13 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  SafeAreaView,
   StatusBar,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
+import { friendshipAPI, conversationAPI } from "../services/api";
+import { getLargeAvatar } from "../utils/avatarUtils";
 
 interface FileItem {
   id: string;
@@ -250,7 +252,7 @@ const ChatOptionsScreen = () => {
       <StatusBar barStyle="light-content" backgroundColor="#d7d7d7" />
       
       {/* Header */}
-      <View className="bg-blue-500 px-4 pt-12 pb-4 shadow-sm">
+      <View className="bg-blue-500 px-4 pt-3 pb-4 shadow-sm">
         <View className="flex-row items-center">
           <TouchableOpacity 
             onPress={() => navigation.goBack()} 
@@ -274,7 +276,7 @@ const ChatOptionsScreen = () => {
         <View className="bg-white px-4 py-4 mb-2">
           <View className="items-center">
             <Image
-              source={{ uri: user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60&h=60&fit=crop&crop=face" }}
+              source={{ uri: user?.avatar || getLargeAvatar(user?.name) }}
               className="w-20 h-20 rounded-full mb-3"
               style={{ width: 80, height: 80 }}
             />

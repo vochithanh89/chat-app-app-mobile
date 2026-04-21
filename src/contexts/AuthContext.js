@@ -23,6 +23,31 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, []);
 
+  // Persist user state khi có thay đổi
+  useEffect(() => {
+    if (user) {
+      AsyncStorage.setItem('userData', JSON.stringify(user));
+    } else {
+      AsyncStorage.removeItem('userData');
+    }
+    AsyncStorage.setItem('isAuthenticated', JSON.stringify(isAuthenticated));
+  }, [user, isAuthenticated]);
+
+  // Giữ lại state khi hot reload trong development
+  useEffect(() => {
+    const handleHotReload = () => {
+      // Không làm gì khi hot reload
+    };
+
+    // Lắng nghe sự kiện hot reload trong development
+    if (__DEV__) {
+      // @ts-ignore
+      if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('beforeunload', handleHotReload);
+      }
+    }
+  }, []);
+
   let isCheckingAuth = false;
 
   // Kiểm tra trạng thái xác thực người dùng
@@ -37,16 +62,42 @@ export const AuthProvider = ({ children }) => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
       
-      if (token && !skipProfileCheck) {
-        // Xác thực token bằng cách lấy thông tin người dùng
-        const profileResponse = await userAPI.getProfile();
-        // Kiểm tra trả response structure và lấy dữ liệu đúng
-        const userData = profileResponse.data || profileResponse.data.data;
-        setUser(userData);
-        setIsAuthenticated(true);
-      } else if (token && skipProfileCheck) {
-        // Bỏ qua kiểm tra profile nhưng vẫn đặt trạng thái đã xác thực
-        setIsAuthenticated(true);
+      if (token) {
+        // Restore user state từ persisted data trước
+        try {
+          const persistedUser = await AsyncStorage.getItem('userData');
+          const persistedAuth = await AsyncStorage.getItem('isAuthenticated');
+          
+          // Chỉ restore state nếu có cả token và persisted data
+          if (persistedUser && persistedAuth && persistedAuth === 'true') {
+            const userData = JSON.parse(persistedUser);
+            const authStatus = JSON.parse(persistedAuth);
+            setUser(userData);
+            setIsAuthenticated(authStatus);
+          } else {
+            if (!skipProfileCheck) {
+              // Xác thực token bằng cách lấy thông tin người dùng
+              const profileResponse = await userAPI.getProfile();
+              // Kiểm tra trả response structure và lấy dữ liệu đúng
+              const userData = profileResponse.data || profileResponse.data.data;
+              setUser(userData);
+              setIsAuthenticated(true);
+            } else {
+              // Bỏ qua kiểm tra profile nhưng vẫn đặt trạng thái đã xác thực
+              setIsAuthenticated(true);
+            }
+          }
+        } catch (parseError) {
+          // Nếu parse lỗi, fallback về verify token
+          if (!skipProfileCheck) {
+            const profileResponse = await userAPI.getProfile();
+            const userData = profileResponse.data || profileResponse.data.data;
+            setUser(userData);
+            setIsAuthenticated(true);
+          } else {
+            setIsAuthenticated(true);
+          }
+        }
       } else {
         // Không có token
         setUser(null);
@@ -54,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       // Xóa token khi có lỗi
-      await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'userData', 'isAuthenticated']);
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -87,10 +138,13 @@ export const AuthProvider = ({ children }) => {
   // Đăng xuất người dùng
   const logout = async () => {
     try {
+      console.log('logout - Starting logout process');
       await authAPI.logout();
     } catch (error) {
       console.error('Lỗi đăng xuất:', error);
     } finally {
+      // Xóa tất cả persisted data
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'userData', 'isAuthenticated']);
       setUser(null);
       setIsAuthenticated(false);
     }
@@ -146,14 +200,12 @@ export const AuthProvider = ({ children }) => {
   const uploadAvatar = async (imageUri) => {
     try {
       const response = await userAPI.uploadAvatar(imageUri);
-      console.log('Upload Avatar Response:', JSON.stringify(response, null, 2));
       // Kiểm tra trả response structure và lấy dữ liệu đúng
       const userData = response.data || response.data.data;
-      console.log('User Data to set:', userData);
       setUser(userData);
       return response;
     } catch (error) {
-      console.log('Upload Avatar Error:', error);
+      console.error('Upload Avatar Error:', error);
       throw error;
     }
   };

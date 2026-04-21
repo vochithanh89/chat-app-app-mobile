@@ -13,6 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RouteProp } from "@react-navigation/native";
+import { friendshipAPI, conversationAPI } from "../services/api";
+import { getSmallAvatar, getMediumAvatar } from "../utils/avatarUtils";
 
 // Import new components and hooks
 import ButtonComponent from "../components/common/ButtonComponent";
@@ -160,7 +162,6 @@ const ChatScreen = () => {
   };
 
   const handleEmojiSelect = (emoji: string) => {
-    console.log(`Added reaction ${emoji} to message ${selectedMessage}`);
     setShowMenu({ x: 0, y: 0, visible: false });
     setSelectedMessage(null);
   };
@@ -265,7 +266,7 @@ const ChatScreen = () => {
               {reaction.users.map((user: string, index: number) => (
                 <View key={index} className="flex-row items-center py-2">
                   <Image
-                    source={{ uri: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=32&h=32&fit=crop&crop=face" }}
+                    source={{ uri: getSmallAvatar("User") }}
                     className="w-8 h-8 rounded-full mr-3"
                   />
                   <Text className="text-sm text-gray-700">{user}</Text>
@@ -276,7 +277,7 @@ const ChatScreen = () => {
             // Single chat - show the other person
             <View className="flex-row items-center py-2">
               <Image
-                source={{ uri: user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=32&h=32&fit=crop&crop=face" }}
+                source={{ uri: user?.avatar || getSmallAvatar(user?.name) }}
                 className="w-8 h-8 rounded-full mr-3"
               />
               <Text className="text-sm text-gray-700">{user?.name || "Người dùng"}</Text>
@@ -338,7 +339,7 @@ const ChatScreen = () => {
           
           <View className="relative">
             <Image
-              source={{ uri: user?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=40&h=40&fit=crop&crop=face" }}
+              source={{ uri: user?.avatar || getMediumAvatar(user?.name) }}
               className="w-12 h-12 rounded-full mr-3 border-2 border-white shadow-sm"
             />
             {user?.online && (
@@ -362,7 +363,16 @@ const ChatScreen = () => {
             <TouchableOpacity className="p-2 bg-white/20 rounded-full mr-2">
               <Ionicons name="call" size={20} color="white" />
             </TouchableOpacity>
-            <TouchableOpacity className="p-2 bg-white/20 rounded-full" onPress={() => navigation.navigate('ChatOptions', { user })}>
+            <TouchableOpacity 
+              className="p-2 bg-white/20 rounded-full" 
+              onPress={() => {
+                if (user?.isGroup) {
+                  (navigation as any).navigate('GroupOptions', { group: user });
+                } else {
+                  navigation.navigate('ChatOptions', { user });
+                }
+              }}
+            >
               <Ionicons name="ellipsis-vertical" size={20} color="white" />
             </TouchableOpacity>
           </View>

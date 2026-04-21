@@ -5,15 +5,16 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RouteProp } from "@react-navigation/native";
 import { friendshipAPI } from "../services/api";
+import { getExtraLargeAvatar } from "../utils/avatarUtils";
 
 type RootStackParamList = {
   Profile: { user: any; friends: any[] };
@@ -182,7 +183,7 @@ const ProfileScreen = () => {
           <View className="relative mb-4">
             <Image
               source={{ 
-                uri: user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face" 
+                uri: user.avatarUrl || getExtraLargeAvatar(user.name)
               }}
               className="w-24 h-24 rounded-full border-4 border-white"
             />
