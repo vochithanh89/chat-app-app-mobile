@@ -13,6 +13,10 @@ const resolveApiBaseUrl = () => {
     return envUrl;
   }
 
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return `http://${window.location.hostname}:3333`;
+  }
+
   const configApiUrl = (
     Constants.expoConfig?.extra?.apiBaseUrl ||
     Constants.manifest2?.extra?.expoClient?.extra?.apiBaseUrl ||
@@ -41,7 +45,7 @@ const resolveApiBaseUrl = () => {
   return "http://127.0.0.1:3333";
 };
 
-const API_BASE_URL = resolveApiBaseUrl();
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
 
@@ -289,11 +293,14 @@ export const userAPI = {
       name: "avatar.jpg",
     });
 
-    const response = await api.post("/api/v1/user/avatar", formData, {
-      headers: {
+    const config = {};
+    if (Platform.OS !== "web") {
+      config.headers = {
         "Content-Type": "multipart/form-data",
-      },
-    });
+      };
+    }
+
+    const response = await api.post("/api/v1/user/avatar", formData, config);
     return response.data;
   },
 };
@@ -446,7 +453,14 @@ export const messageAPI = {
       });
     }
 
-    const response = await api.post("/api/v1/messages/upload", formData);
+    const config = {};
+    if (Platform.OS !== "web") {
+      config.headers = {
+        "Content-Type": "multipart/form-data",
+      };
+    }
+
+    const response = await api.post("/api/v1/messages/upload", formData, config);
     return response.data;
   },
 

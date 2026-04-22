@@ -23,12 +23,44 @@ import { RouteProp, useFocusEffect, useNavigation, useRoute } from "@react-navig
 import { StackNavigationProp } from "@react-navigation/stack";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import { useVideoPlayer, VideoView } from "expo-video";
+
+const VideoAttachment = ({ uri }: { uri: string }) => {
+  const player = useVideoPlayer(uri, (player) => {
+    player.loop = false;
+  });
+  const videoViewRef = useRef<any>(null);
+
+  return (
+    <TouchableOpacity 
+      activeOpacity={0.8}
+      onPress={() => {
+        if (videoViewRef.current) {
+          videoViewRef.current.enterFullscreen();
+          player.play();
+        }
+      }}
+      style={{ width: 220, height: 150, borderRadius: 12, overflow: "hidden", marginVertical: 4, position: "relative" }}
+    >
+      <VideoView 
+        ref={videoViewRef}
+        style={{ flex: 1 }} 
+        player={player} 
+        nativeControls={false}
+      />
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.2)", justifyContent: "center", alignItems: "center" }}>
+        <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 // API & Context (Giả định theo project của bạn)
 import { conversationAPI, messageAPI } from "../services/api";
 import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromConversation } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
+import { useCall } from "../contexts/CallContext";
 
 /** --- TYPES --- **/
 type RootStackParamList = {
@@ -46,6 +78,7 @@ interface PendingAttachment {
   mimeType: string;
   size?: number;
   type: "image" | "video" | "file";
+  file?: any;
 }
 
 /** --- CONSTANTS --- **/
@@ -61,6 +94,7 @@ const ChatScreen = () => {
   const insets = useSafeAreaInsets();
   const currentUserId = authUser?.uuid || authUser?.id || null;
   const { user: routeUser, conversationId: routeConversationId } = route.params;
+  const { startCall, startGroupCall } = useCall();
 
   // Refs
   const listRef = useRef<FlatList>(null);
@@ -83,6 +117,7 @@ const ChatScreen = () => {
   const [selectedForwardTargets, setSelectedForwardTargets] = useState<string[]>([]);
   const [forwardLoading, setForwardLoading] = useState(false);
   const [forwarding, setForwarding] = useState(false);
+  const [viewingImageUri, setViewingImageUri] = useState<string | null>(null);
 
   // Hide tab bar on mount
   useTabBarVisibility(true);
@@ -168,7 +203,7 @@ const ChatScreen = () => {
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
@@ -179,7 +214,8 @@ const ChatScreen = () => {
         uri: a.uri,
         name: a.fileName || "image.jpg",
         mimeType: a.mimeType || "image/jpeg",
-        type: "image"
+        type: "image",
+        file: (a as any).file || null
       }));
       setPendingAttachments(prev => [...prev, ...newAssets]);
     }
@@ -309,9 +345,49 @@ const ChatScreen = () => {
               </View>
             )}
 
-            <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
-              {item.content || item.text}
-            </Text>
+            {/* Image Attachments */}
+            {item.imageAttachments?.length > 0 && (
+              <View style={styles.messageImagesContainer}>
+                {item.imageAttachments.map((img: any) => (
+                  <TouchableOpacity key={img.id} onPress={() => setViewingImageUri(img.url)}>
+                    <Image
+                      source={{ uri: img.url }}
+                      style={styles.messageImage}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Video Attachments */}
+            {item.videoAttachments?.length > 0 && (
+              <View style={styles.messageImagesContainer}>
+                {item.videoAttachments.map((vid: any) => (
+                  <VideoAttachment key={vid.id} uri={vid.url} />
+                ))}
+              </View>
+            )}
+
+            {/* File Attachments */}
+            {item.fileAttachments?.length > 0 && (
+              <View style={styles.messageImagesContainer}>
+                {item.fileAttachments.map((file: any) => (
+                  <TouchableOpacity key={file.id} style={styles.messageFile} onPress={() => Linking.openURL(file.url)}>
+                    <Ionicons name="document" size={20} color={isMine ? "white" : ZALO_BLUE} />
+                    <Text style={[styles.messageFileText, isMine ? styles.textWhite : styles.textBlack]} numberOfLines={1}>
+                      {file.fileName || "File"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {(item.content || item.text) ? (
+              <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
+                {item.content || item.text}
+              </Text>
+            ) : null}
             
             <View style={styles.messageFooter}>
               <Text style={styles.timeText}>{item.time}</Text>
@@ -338,6 +414,15 @@ const ChatScreen = () => {
     );
   };
 
+  const handleCall = (type: "video" | "audio") => {
+    const convId = routeConversationId || conversation?.id;
+    if (conversation?.isGroup || conversation?.type === "group") {
+      startGroupCall(convId, type, conversation.name || "Group Call");
+    } else {
+      startCall(routeUser.id || routeUser.uuid, type, convId, routeUser);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -351,8 +436,12 @@ const ChatScreen = () => {
           <Text style={styles.headerSub}>{routeUser?.online ? "Vừa mới truy cập" : "Offline"}</Text>
         </View>
         <View style={styles.headerActions}>
-          <Ionicons name="call-outline" size={22} color="white" style={{ marginRight: 15 }} />
-          <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
+          <TouchableOpacity onPress={() => handleCall('audio')}>
+            <Ionicons name="call-outline" size={22} color="white" style={{ marginRight: 15 }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleCall('video')}>
+            <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate("ChatOptions", { user: routeUser })}>
             <Ionicons name="menu-outline" size={26} color="white" />
           </TouchableOpacity>
@@ -393,6 +482,22 @@ const ChatScreen = () => {
             </View>
           )}
 
+          {pendingAttachments.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingAttachmentsContainer}>
+              {pendingAttachments.map(item => (
+                <View key={item.id} style={styles.pendingAttachmentItem}>
+                  <Image source={{ uri: item.uri }} style={styles.pendingAttachmentImage} />
+                  <TouchableOpacity
+                    style={styles.pendingAttachmentRemove}
+                    onPress={() => setPendingAttachments(prev => prev.filter(p => p.id !== item.id))}
+                  >
+                    <Ionicons name="close-circle" size={22} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
           <View style={styles.inputRow}>
             <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
               <Ionicons name="add-circle-outline" size={28} color="#666" />
@@ -404,7 +509,7 @@ const ChatScreen = () => {
               value={message}
               onChangeText={setMessage}
             />
-            {message.length > 0 ? (
+            {message.trim().length > 0 || pendingAttachments.length > 0 ? (
               <TouchableOpacity onPress={handleSend}>
                 <Ionicons name="send" size={24} color={ZALO_BLUE} />
               </TouchableOpacity>
@@ -534,6 +639,25 @@ const ChatScreen = () => {
           </View>
         </Pressable>
       </Modal>
+
+      {/* ImageViewer Modal */}
+      <Modal visible={!!viewingImageUri} transparent animationType="fade" onRequestClose={() => setViewingImageUri(null)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" }}>
+          <TouchableOpacity 
+            style={{ position: "absolute", top: 40, right: 20, zIndex: 10, padding: 10 }}
+            onPress={() => setViewingImageUri(null)}
+          >
+            <Ionicons name="close" size={32} color="white" />
+          </TouchableOpacity>
+          {viewingImageUri && (
+            <Image 
+              source={{ uri: viewingImageUri }} 
+              style={{ width: "100%", height: "80%" }} 
+              resizeMode="contain" 
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -575,6 +699,11 @@ const styles = StyleSheet.create({
   textWhite: { color: "white" },
   textBlack: { color: "#1A1A1A" },
   
+  messageImagesContainer: { flexDirection: "row", flexWrap: "wrap", marginBottom: 4, marginTop: 4 },
+  messageImage: { width: 140, height: 140, borderRadius: 8, margin: 2, backgroundColor: "#E5E5E5" },
+  messageFile: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.1)", padding: 8, borderRadius: 8, marginVertical: 2, width: 200 },
+  messageFileText: { marginLeft: 8, flex: 1, fontSize: 13 },
+  
   messageFooter: { flexDirection: "row", justifyContent: "flex-end", marginTop: 4, alignItems: "center" },
   timeText: { fontSize: 11, color: "#AAA", marginRight: 4 },
   
@@ -586,6 +715,11 @@ const styles = StyleSheet.create({
   replySide: { width: 3, height: "100%", backgroundColor: ZALO_BLUE, marginRight: 10 },
   replyName: { fontWeight: "bold", fontSize: 12, color: ZALO_BLUE },
   replyContent: { fontSize: 13, color: "#666" },
+
+  pendingAttachmentsContainer: { marginBottom: 10, maxHeight: 80, paddingVertical: 5 },
+  pendingAttachmentItem: { marginRight: 12, position: "relative" },
+  pendingAttachmentImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: "#E5E5E5" },
+  pendingAttachmentRemove: { position: "absolute", top: -8, right: -8, backgroundColor: "white", borderRadius: 12 },
 
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
   actionSheet: { width: "85%", backgroundColor: "white", borderRadius: 15, overflow: "hidden" },

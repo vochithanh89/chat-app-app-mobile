@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI } from '../services/api';
+import { socketService } from '../services/socketService';
 
 const AuthContext = createContext();
 const getResponseData = (response) => {
@@ -48,9 +49,11 @@ export const AuthProvider = ({ children }) => {
         const userData = getResponseData(profileResponse);
         setUser(userData);
         setIsAuthenticated(true);
+        socketService.connect();
       } else if (token && skipProfileCheck) {
         // Bỏ qua kiểm tra profile nhưng vẫn đặt trạng thái đã xác thực
         setIsAuthenticated(true);
+        socketService.connect();
       } else {
         // Không có token
         setUser(null);
@@ -79,6 +82,7 @@ export const AuthProvider = ({ children }) => {
       const userData = getResponseData(profileResponse);
       setUser(userData);
       setIsAuthenticated(true);
+      socketService.connect();
       
       return response;
     } catch (error) {
@@ -97,6 +101,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setUser(null);
       setIsAuthenticated(false);
+      socketService.disconnect();
     }
   };
 

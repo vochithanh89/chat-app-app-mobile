@@ -1,5 +1,32 @@
+import { API_BASE_URL } from "./api";
+
 const FALLBACK_AVATAR =
   "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face";
+
+export const formatImageUrl = (url?: string | null) => {
+  if (!url) return FALLBACK_AVATAR;
+
+  // Replace localhost or 127.0.0.1 with correct API_BASE_URL dynamically
+  if (url.includes("localhost:") || url.includes("127.0.0.1:")) {
+    try {
+      const parsedUrl = new URL(url);
+      return `${API_BASE_URL}${parsedUrl.pathname}${parsedUrl.search}`;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  // Prepend API base URL for relative paths
+  if (url.startsWith("/")) {
+    return `${API_BASE_URL}${url}`;
+  }
+
+  if (!url.startsWith("http")) {
+    return `${API_BASE_URL}/${url}`;
+  }
+
+  return url;
+};
 
 export const formatTimeLabel = (value?: string | null) => {
   if (!value) {
@@ -38,15 +65,25 @@ export const formatTimeLabel = (value?: string | null) => {
 
 export const normalizeUser = (user: any = {}) => {
   const id = user?.uuid || user?.id || null;
-  const avatarUrl = user?.avatarUrl || user?.avatar_url || user?.avatar || FALLBACK_AVATAR;
+  const avatarUrl = formatImageUrl(user?.avatarUrl || user?.avatar_url || user?.avatar);
   const isOnline = Boolean(
     user?.isOnline ?? user?.is_online ?? user?.online ?? false,
   );
+  
+  let name = "Unknown User";
+  if (user?.name) name = user.name;
+  else if (user?.full_name) name = user.full_name;
+  else if (user?.fullName) name = user.fullName;
+  else if (user?.firstName && user?.lastName) name = `${user.firstName} ${user.lastName}`;
+  else if (user?.first_name && user?.last_name) name = `${user.first_name} ${user.last_name}`;
+  else if (user?.username) name = user.username;
+  else if (user?.email) name = user.email.split('@')[0];
 
   return {
     ...user,
     id,
     uuid: user?.uuid || id,
+    name,
     avatarUrl,
     avatar: avatarUrl,
     isOnline,
@@ -83,7 +120,7 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
     return {
       ...attachment,
       id: attachment?.uuid || attachment?.id,
-      url: attachment?.url || attachment?.fileUrl || attachment?.file_url || null,
+      url: formatImageUrl(attachment?.url || attachment?.fileUrl || attachment?.file_url || null),
       name: attachment?.fileName || attachment?.file_name || attachment?.name || "Attachment",
       fileName: attachment?.fileName || attachment?.file_name || attachment?.name || "Attachment",
       mimeType,
@@ -93,37 +130,37 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
   });
   const groupedReactions = Array.isArray(message?.reactions)
     ? message.reactions.reduce((acc: Record<string, any>, reaction: any) => {
-        if (!reaction?.emoji) {
-          return acc;
-        }
-
-        if (!acc[reaction.emoji]) {
-          acc[reaction.emoji] = {
-            emoji: reaction.emoji,
-            users: [],
-            userIds: [],
-            count: 0,
-            reactedByMe: false,
-          };
-        }
-
-        const normalizedUser = normalizeUser(reaction?.user);
-        const reactionUserId = reaction?.userId || reaction?.user_id || normalizedUser?.id;
-        const reactionUserName = normalizedUser?.name || reaction?.user?.name || "User";
-
-        acc[reaction.emoji].count += 1;
-        if (reactionUserName) {
-          acc[reaction.emoji].users.push(reactionUserName);
-        }
-        if (reactionUserId) {
-          acc[reaction.emoji].userIds.push(reactionUserId);
-          if (currentUserId && reactionUserId === currentUserId) {
-            acc[reaction.emoji].reactedByMe = true;
-          }
-        }
-
+      if (!reaction?.emoji) {
         return acc;
-      }, {})
+      }
+
+      if (!acc[reaction.emoji]) {
+        acc[reaction.emoji] = {
+          emoji: reaction.emoji,
+          users: [],
+          userIds: [],
+          count: 0,
+          reactedByMe: false,
+        };
+      }
+
+      const normalizedUser = normalizeUser(reaction?.user);
+      const reactionUserId = reaction?.userId || reaction?.user_id || normalizedUser?.id;
+      const reactionUserName = normalizedUser?.name || reaction?.user?.name || "User";
+
+      acc[reaction.emoji].count += 1;
+      if (reactionUserName) {
+        acc[reaction.emoji].users.push(reactionUserName);
+      }
+      if (reactionUserId) {
+        acc[reaction.emoji].userIds.push(reactionUserId);
+        if (currentUserId && reactionUserId === currentUserId) {
+          acc[reaction.emoji].reactedByMe = true;
+        }
+      }
+
+      return acc;
+    }, {})
     : {};
 
   return {
@@ -158,9 +195,9 @@ export const normalizeConversation = (
 ) => {
   const members = Array.isArray(conversation?.members)
     ? conversation.members.map((member: any) => ({
-        ...member,
-        user: normalizeUser(member?.user),
-      }))
+      ...member,
+      user: normalizeUser(member?.user),
+    }))
     : [];
   const messages = Array.isArray(conversation?.messages)
     ? conversation.messages
@@ -171,11 +208,12 @@ export const normalizeConversation = (
     members.find((member: any) => member?.user?.id && member.user.id !== currentUserId)?.user ||
     null;
   const latestMessage = messages[0] || conversation?.last_message || null;
-  const avatarUrl =
+  const avatarUrl = formatImageUrl(
     conversation?.avatarUrl ||
     conversation?.avatar_url ||
     otherMember?.avatarUrl ||
-    FALLBACK_AVATAR;
+    FALLBACK_AVATAR
+  );
   const name =
     conversation?.name ||
     otherMember?.name ||
@@ -200,9 +238,9 @@ export const normalizeConversation = (
       "No messages yet",
     time: formatTimeLabel(
       conversation?.last_message_at ||
-        latestMessage?.created_at ||
-        conversation?.updated_at ||
-        conversation?.created_at,
+      latestMessage?.created_at ||
+      conversation?.updated_at ||
+      conversation?.created_at,
     ),
     rawTime:
       conversation?.last_message_at ||
