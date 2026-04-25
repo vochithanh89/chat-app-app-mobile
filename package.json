@@ -23,6 +23,7 @@
     "axios": "^1.14.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "54",
+    "expo-dev-client": "~6.0.20",
     "expo-document-picker": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-status-bar": "~3.0.9",

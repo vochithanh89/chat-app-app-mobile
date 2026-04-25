@@ -24,6 +24,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { getSmallAvatar, getMediumAvatar } from "../utils/avatarUtils";
 
 const VideoAttachment = ({ uri }: { uri: string }) => {
   const player = useVideoPlayer(uri, (player) => {
@@ -32,7 +33,7 @@ const VideoAttachment = ({ uri }: { uri: string }) => {
   const videoViewRef = useRef<any>(null);
 
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => {
         if (videoViewRef.current) {
@@ -42,10 +43,10 @@ const VideoAttachment = ({ uri }: { uri: string }) => {
       }}
       style={{ width: 220, height: 150, borderRadius: 12, overflow: "hidden", marginVertical: 4, position: "relative" }}
     >
-      <VideoView 
+      <VideoView
         ref={videoViewRef}
-        style={{ flex: 1 }} 
-        player={player} 
+        style={{ flex: 1 }}
+        player={player}
         nativeControls={false}
       />
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.2)", justifyContent: "center", alignItems: "center" }}>
@@ -56,7 +57,7 @@ const VideoAttachment = ({ uri }: { uri: string }) => {
 };
 
 // API & Context (Giả định theo project của bạn)
-import { conversationAPI, messageAPI } from "../services/api";
+import { conversationAPI, messageAPI, friendshipAPI } from "../services/api";
 import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromConversation } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
@@ -94,7 +95,7 @@ const ChatScreen = () => {
   const insets = useSafeAreaInsets();
   const currentUserId = authUser?.uuid || authUser?.id || null;
   const { user: routeUser, conversationId: routeConversationId } = route.params;
-  const { startCall, startGroupCall } = useCall();
+  const { startCall, startGroupCall, joinGroupCall, ongoingGroupCalls, callState } = useCall();
 
   // Refs
   const listRef = useRef<FlatList>(null);
@@ -107,7 +108,7 @@ const ChatScreen = () => {
   const [conversation, setConversation] = useState<any>(null);
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
-  
+
   // Modal/Overlay States
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [showActions, setShowActions] = useState(false);
@@ -175,7 +176,7 @@ const ChatScreen = () => {
     try {
       setSending(true);
       const convId = routeConversationId || conversation?.id;
-      
+
       let attachmentIds: string[] = [];
       if (pendingAttachments.length > 0) {
         const uploads = await Promise.all(
@@ -235,8 +236,8 @@ const ChatScreen = () => {
       const items = response?.data?.conversations || response?.conversations || [];
       const normalized = Array.isArray(items)
         ? items
-            .map((item: any) => normalizeConversation(item, currentUserId))
-            .filter((item: any) => item?.id && item.id !== currentConversationId)
+          .map((item: any) => normalizeConversation(item, currentUserId))
+          .filter((item: any) => item?.id && item.id !== currentConversationId)
         : [];
       setForwardConversations(normalized);
     } catch (error) {
@@ -324,9 +325,19 @@ const ChatScreen = () => {
 
   const renderMessage = ({ item }: { item: any }) => {
     const isMine = item.user === "me";
-    
+    const isGroup = conversation?.isGroup || conversation?.type === 'group';
+    const senderName = item.sender?.name || 'Người dùng';
+    const senderAvatar = item.sender?.avatar || item.sender?.avatarUrl || FALLBACK_AVATAR;
+
     return (
       <View style={[styles.messageContainer, isMine ? styles.mineAlign : styles.otherAlign]}>
+        {/* Show sender avatar in group for other people's messages */}
+        {isGroup && !isMine && (
+          <View style={styles.groupSenderRow}>
+            <Image source={{ uri: senderAvatar }} style={styles.groupSenderAvatar} />
+            <Text style={styles.groupSenderName} numberOfLines={1}>{senderName}</Text>
+          </View>
+        )}
         <TouchableOpacity
           onLongPress={() => {
             setSelectedMessage(item);
@@ -335,7 +346,7 @@ const ChatScreen = () => {
           delayLongPress={500}
           activeOpacity={0.8}
         >
-          <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+          <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther, isGroup && !isMine && { marginLeft: 36 }]}>
             {/* Reply Preview inside bubble */}
             {item.replyToMessageId && (
               <View style={styles.replyInBubble}>
@@ -383,19 +394,58 @@ const ChatScreen = () => {
               </View>
             )}
 
-            {(item.content || item.text) ? (
-              <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
-                {item.content || item.text}
-              </Text>
-            ) : null}
-            
+            {(() => {
+              const content = item.content || item.text || "";
+              
+              // Handle active call start message
+              if (content.includes("[GROUP_CALL:STARTED]")) {
+                const isActive = !!ongoingGroupCalls[conversation?.id];
+                return (
+                  <View style={styles.callMessageContainer}>
+                    <View style={styles.callMessageHeader}>
+                      <View style={[styles.callIconBox, { backgroundColor: isActive ? "#4CD964" : "#9CA3AF" }]}>
+                        <Ionicons name="videocam" size={20} color="white" />
+                      </View>
+                      <Text style={[styles.callMessageTitle, { color: isMine ? "white" : "#333" }]}>
+                        {isActive ? "Cuộc họp đang diễn ra" : "Cuộc họp nhóm đã bắt đầu"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={[styles.callJoinButton, { backgroundColor: isMine ? "white" : "#0068FF" }]}
+                      onPress={() => joinGroupCall(conversation?.id, 'video')}
+                    >
+                      <Text style={[styles.callJoinButtonText, { color: isMine ? "#0068FF" : "white" }]}>
+                        {isActive ? "Tham gia ngay" : "Tham gia cuộc họp"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }
+
+              // Handle call ended message
+              if (content.includes("Cuộc gọi nhóm kết thúc")) {
+                return (
+                  <View style={styles.callEndContainer}>
+                    <Ionicons name="call" size={16} color={isMine ? "#E0E0E0" : "#666"} style={{ marginRight: 8 }} />
+                    <Text style={[styles.callEndText, { color: isMine ? "#E0E0E0" : "#666" }]}>{content}</Text>
+                  </View>
+                );
+              }
+
+              return (
+                <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
+                  {content}
+                </Text>
+              );
+            })()}
+
             <View style={styles.messageFooter}>
               <Text style={styles.timeText}>{item.time}</Text>
               {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
             </View>
           </View>
         </TouchableOpacity>
-        
+
         {/* Reactions Row */}
         {item.reactions?.length > 0 && (
           <View style={[styles.reactionRow, isMine ? styles.reactionMine : styles.reactionOther]}>
@@ -442,14 +492,39 @@ const ChatScreen = () => {
           <TouchableOpacity onPress={() => handleCall('video')}>
             <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("ChatOptions", { user: routeUser })}>
+          <TouchableOpacity onPress={() => {
+            if (conversation?.isGroup || conversation?.type === 'group') {
+              navigation.navigate("GroupOptions", { group: conversation });
+            } else {
+              navigation.navigate("ChatOptions", { user: routeUser });
+            }
+          }}>
             <Ionicons name="menu-outline" size={26} color="white" />
           </TouchableOpacity>
         </View>
       </View>
+      
+      {/* Ongoing Call Banner */}
+      {conversation?.isGroup && ongoingGroupCalls[conversation.id] && callState === 'idle' && (
+        <View style={styles.activeCallBanner}>
+          <View style={styles.activeCallIconWrap}>
+            <Ionicons name="videocam" size={20} color="white" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.activeCallText}>Cuộc họp đang diễn ra</Text>
+            <Text style={styles.activeCallSub}>Tham gia để cùng trò chuyện</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.joinCallBtn}
+            onPress={() => joinGroupCall(conversation.id, ongoingGroupCalls[conversation.id].type || 'video')}
+          >
+            <Text style={styles.joinCallBtnText}>Tham gia</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Message List */}
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         style={{ flex: 1 }}
@@ -553,7 +628,7 @@ const ChatScreen = () => {
             setSelectedForwardTargets([]);
           }}
         >
-          <Pressable style={styles.forwardSheet} onPress={() => {}}>
+          <Pressable style={styles.forwardSheet} onPress={() => { }}>
             <Text style={styles.forwardTitle}>Forward message</Text>
 
             {forwardLoading ? (
@@ -643,17 +718,17 @@ const ChatScreen = () => {
       {/* ImageViewer Modal */}
       <Modal visible={!!viewingImageUri} transparent animationType="fade" onRequestClose={() => setViewingImageUri(null)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" }}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ position: "absolute", top: 40, right: 20, zIndex: 10, padding: 10 }}
             onPress={() => setViewingImageUri(null)}
           >
             <Ionicons name="close" size={32} color="white" />
           </TouchableOpacity>
           {viewingImageUri && (
-            <Image 
-              source={{ uri: viewingImageUri }} 
-              style={{ width: "100%", height: "80%" }} 
-              resizeMode="contain" 
+            <Image
+              source={{ uri: viewingImageUri }}
+              style={{ width: "100%", height: "80%" }}
+              resizeMode="contain"
             />
           )}
         </View>
@@ -683,34 +758,51 @@ const styles = StyleSheet.create({
   headerSub: { color: "#D1D1D1", fontSize: 12 },
   avatar: { width: 40, height: 40, borderRadius: 20, marginHorizontal: 10 },
   headerActions: { flexDirection: "row", alignItems: "center" },
-  
+
   listContent: { padding: 15 },
   messageContainer: { marginBottom: 15, maxWidth: "80%" },
   mineAlign: { alignSelf: "flex-end" },
   otherAlign: { alignSelf: "flex-start" },
-  
+  groupSenderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  groupSenderAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+  groupSenderName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    maxWidth: 180,
+  },
+
   bubble: { borderRadius: 18, padding: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, elevation: 1 },
   bubbleMine: { backgroundColor: ZALO_BLUE },
   bubbleOther: { backgroundColor: "white" },
   replyInBubble: { borderLeftWidth: 2, borderLeftColor: "#93C5FD", paddingLeft: 8, marginBottom: 6 },
   replyText: { fontSize: 12, color: "#374151" },
-  
+
   messageText: { fontSize: 16, lineHeight: 22 },
   textWhite: { color: "white" },
   textBlack: { color: "#1A1A1A" },
-  
+
   messageImagesContainer: { flexDirection: "row", flexWrap: "wrap", marginBottom: 4, marginTop: 4 },
   messageImage: { width: 140, height: 140, borderRadius: 8, margin: 2, backgroundColor: "#E5E5E5" },
   messageFile: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.1)", padding: 8, borderRadius: 8, marginVertical: 2, width: 200 },
   messageFileText: { marginLeft: 8, flex: 1, fontSize: 13 },
-  
+
   messageFooter: { flexDirection: "row", justifyContent: "flex-end", marginTop: 4, alignItems: "center" },
   timeText: { fontSize: 11, color: "#AAA", marginRight: 4 },
-  
+
   composer: { backgroundColor: "white", borderTopWidth: 1, borderTopColor: "#E5E5E5", padding: 10 },
   inputRow: { flexDirection: "row", alignItems: "center" },
   input: { flex: 1, backgroundColor: "#F0F0F0", borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, marginHorizontal: 10, maxHeight: 100 },
-  
+
   replyBar: { flexDirection: "row", backgroundColor: "#F9F9F9", padding: 8, borderRadius: 8, marginBottom: 10, alignItems: "center" },
   replySide: { width: 3, height: "100%", backgroundColor: ZALO_BLUE, marginRight: 10 },
   replyName: { fontWeight: "bold", fontSize: 12, color: ZALO_BLUE },
@@ -728,7 +820,7 @@ const styles = StyleSheet.create({
   actionMenu: { paddingVertical: 10 },
   actionItem: { flexDirection: "row", padding: 15, alignItems: "center" },
   actionLabel: { marginLeft: 15, fontSize: 16 },
-  
+
   reactionRow: { flexDirection: "row", marginTop: -5 },
   reactionMine: { justifyContent: "flex-end", marginRight: 10 },
   reactionOther: { justifyContent: "flex-start", marginLeft: 10 },
@@ -773,7 +865,92 @@ const styles = StyleSheet.create({
   forwardSendText: { color: "white", fontWeight: "700" },
 
   attachmentSheet: { width: "100%", backgroundColor: "white", position: "absolute", bottom: 0, padding: 20, flexDirection: "row", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  attachBtn: { alignItems: "center", marginRight: 30 }
+  attachBtn: { alignItems: "center", marginRight: 30 },
+  activeCallBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F2FF',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1E4FF',
+  },
+  activeCallIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#4CD964',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeCallText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0068FF',
+  },
+  activeCallSub: {
+    fontSize: 12,
+    color: '#666',
+  },
+  joinCallBtn: {
+    backgroundColor: '#0068FF',
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  joinCallBtnText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  
+  // Call Message Styles
+  callMessageContainer: {
+    padding: 10,
+    minWidth: 200,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+  },
+  callMessageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  callIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  callMessageTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  callJoinButton: {
+    backgroundColor: '#0068FF',
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  callJoinButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  callEndContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  callEndText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
 });
 
 export default ChatScreen;

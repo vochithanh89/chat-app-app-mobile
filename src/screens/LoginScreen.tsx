@@ -21,7 +21,7 @@ const LoginScreen = () => {
     }
     try {
       await login(identifier, password);
-      navigation.replace("MainApp");
+      // AuthWrapper sẽ tự động chuyển sang MainApp khi isAuthenticated thay đổi
     } catch (error) {
       const message =
         error.response?.data?.message ||

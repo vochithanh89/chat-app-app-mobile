@@ -7,10 +7,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import { useAuth } from "../contexts/AuthContext";
 import MenuItemComponent from "../components/list/MenuItemComponent";
 
 const SettingsScreen = () => {
   const navigation = useNavigation<any>();
+  const { logout } = useAuth();
 
   // STATE THẬT
   const [isPrivate, setIsPrivate] = useState(false);
@@ -72,7 +74,7 @@ const SettingsScreen = () => {
       {/* Logout */}
       <TouchableOpacity
         className="mt-6 mx-4 bg-white p-4 rounded-xl items-center"
-        onPress={() => navigation.replace("Login")}
+        onPress={logout}
       >
         <Text className="text-red-500 font-semibold">Log out</Text>
       </TouchableOpacity>

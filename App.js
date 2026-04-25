@@ -10,7 +10,7 @@ let renderCount = 0;
 
 export default function App() {
   renderCount++;
-  console.log(`DEBUG: App render #${renderCount}`);
+  // console.log(`DEBUG: App render #${renderCount}`);
   
   return (
     <AuthProvider>

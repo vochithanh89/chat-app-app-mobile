@@ -81,7 +81,7 @@ api.interceptors.request.use(
     try {
       token = await AsyncStorage.getItem("accessToken");
     } catch (error) {
-      console.log("Lỗi AsyncStorage trong request interceptor:", error);
+      console.error("Lỗi AsyncStorage trong request interceptor:", error);
     }
     // Sử dụng token trong bộ nhớ nếu AsyncStorage thất bại
     if (!token && memoryToken) {
@@ -200,7 +200,7 @@ export const authAPI = {
       memoryToken = accessToken;
       memoryRefreshToken = refreshToken;
     } catch (error) {
-      console.log("Lỗi lưu token trong login:", error);
+      console.error("Lỗi lưu token trong login:", error);
     }
 
     return response.data;
@@ -233,7 +233,7 @@ export const authAPI = {
       try {
         await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
       } catch (error) {
-        console.log("Lỗi xóa token trong logout:", error);
+        console.error("Lỗi xóa token trong logout:", error);
       }
       // Xóa token trong bộ nhớ
       memoryToken = null;
@@ -391,12 +391,21 @@ export const friendshipAPI = {
   }
 };
 
+// Conversation/Group APIs
 export const conversationAPI = {
-  getConversations: async () => {
-    const response = await api.get("/api/v1/conversations");
+  // POST /api/v1/conversations/group - Tạo nhóm mới
+  createGroup: async (groupData) => {
+    const response = await api.post('/api/v1/conversations/group', groupData);
     return response.data;
   },
 
+  // GET /api/v1/conversations - Lấy danh sách cuộc trò chuyện
+  getConversations: async () => {
+    const response = await api.get('/api/v1/conversations');
+    return response.data;
+  },
+
+  // GET /api/v1/conversations/:id - Xem chi tiết cuộc trò chuyện
   getConversationById: async (conversationId) => {
     const response = await api.get(`/api/v1/conversations/${conversationId}`);
     return response.data;
@@ -409,6 +418,64 @@ export const conversationAPI = {
     return response.data;
   },
 
+  // POST /api/v1/conversations/:id/members - Thêm thành viên vào nhóm
+  addMembers: async (conversationId, memberIds) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/members`, {
+      user_ids: memberIds
+    });
+    return response.data;
+  },
+
+  // DELETE /api/v1/conversations/:id/members/:userId - Xóa thành viên khỏi nhóm
+  removeMember: async (conversationId, userId) => {
+    const response = await api.delete(`/api/v1/conversations/${conversationId}/members/${userId}`);
+    return response.data;
+  },
+
+  // POST /api/v1/conversations/:id/leave - Rời nhóm
+  leaveGroup: async (conversationId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/leave`);
+    return response.data;
+  },
+
+  // PUT /api/v1/conversations/:id/members/:userId/role - Cập nhật quyền thành viên
+  updateMemberRole: async (conversationId, userId, role) => {
+    const response = await api.put(`/api/v1/conversations/${conversationId}/members/${userId}/role`, {
+      role: role
+    });
+    return response.data;
+  },
+
+  // POST /api/v1/conversations/:id/transfer - Chuyển quyền sở hữu
+  transferOwnership: async (conversationId, newOwnerId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/transfer`, {
+      user_id: newOwnerId
+    });
+    return response.data;
+  },
+
+  // DELETE /api/v1/conversations/:id - Giải tán nhóm
+  disbandGroup: async (conversationId) => {
+    const response = await api.delete(`/api/v1/conversations/${conversationId}`);
+    return response.data;
+  },
+
+  // PUT /api/v1/conversations/:id/avatar - Cập nhật avatar nhóm
+  updateGroupAvatar: async (conversationId, imageData) => {
+    const response = await api.put(`/api/v1/conversations/${conversationId}/avatar`, imageData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  // POST /api/v1/conversations/:id/read - Đánh dấu đã đọc
+  markAsRead: async (conversationId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/read`);
+    return response.data;
+  },
+  
   markRead: async (conversationId, lastMessageId = null) => {
     const response = await api.post(`/api/v1/conversations/${conversationId}/read`, {
       last_message_id: lastMessageId,

@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { View, Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { NavigationContainer } from "@react-navigation/native";
@@ -15,10 +16,45 @@ import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 import AccountScreen from "../screens/AccountScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
+import GroupOptionsScreen from "../screens/GroupOptionsScreen";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../contexts/AuthContext";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Import AuthenticatedMainTabs
+import AuthenticatedMainTabs from './AuthenticatedMainTabs';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+// AuthWrapper component để kiểm tra authentication state
+const AuthWrapper = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  // Chỉ hiển thị loading khi thực sự đang loading (không phải infinite loop)
+  if (loading && !isAuthenticated) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <NavigationContainer>
+        <Stack.Navigator id="auth-stack-navigator" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    );
+  }
+
+  return <>{children}</>;
+};
 
 function SettingsStack() {
   return (
@@ -59,56 +95,35 @@ function ContactStack() {
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="GroupOptions" component={GroupOptionsScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function MainNavigator() {
+  const { isAuthenticated } = useAuth();
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        id="main-stack-navigator"
-        screenOptions={{ headerShown: false }}
-      >
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        <Stack.Screen name="MainApp" component={MainTabs} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AuthWrapper>
+      <NavigationContainer>
+        <Stack.Navigator
+          id="main-stack-navigator"
+          screenOptions={{ headerShown: false }}
+          initialRouteName={isAuthenticated ? "MainApp" : "Login"}
+        >
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="MainApp" component={AuthenticatedMainTabs} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
+          <Stack.Screen name="GroupOptions" component={GroupOptionsScreen} />
+          <Stack.Screen name="Account" component={AccountScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AuthWrapper>
   );
 }
 
-function MainTabs() {
-  return (
-    <Tab.Navigator
-      id="main-tab-navigator"
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap;
-
-          if (route.name === "Home") {
-            iconName = focused ? "home" : "home-outline";
-          } else if (route.name === "Contact") {
-            iconName = focused ? "people" : "people-outline";
-          } else if (route.name === "Call") {
-            iconName = focused ? "call" : "call-outline";
-          } else {
-            iconName = focused ? "settings" : "settings-outline";
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: "#0068FF",
-        tabBarInactiveTintColor: "gray",
-        headerShown: false,
-      })}
-    >
-      <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Contact" component={ContactStack} />
-      <Tab.Screen name="Call" component={CallsScreen} />
-      <Tab.Screen name="Setting" component={SettingsStack} />
-    </Tab.Navigator>
-  );
-}

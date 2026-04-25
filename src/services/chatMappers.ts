@@ -70,10 +70,12 @@ export const normalizeUser = (user: any = {}) => {
     user?.isOnline ?? user?.is_online ?? user?.online ?? false,
   );
   
-  let name = "Unknown User";
+  let name = "Người dùng";
   if (user?.name) name = user.name;
   else if (user?.full_name) name = user.full_name;
   else if (user?.fullName) name = user.fullName;
+  else if (user?.displayName) name = user.displayName;
+  else if (user?.display_name) name = user.display_name;
   else if (user?.firstName && user?.lastName) name = `${user.firstName} ${user.lastName}`;
   else if (user?.first_name && user?.last_name) name = `${user.first_name} ${user.last_name}`;
   else if (user?.username) name = user.username;
