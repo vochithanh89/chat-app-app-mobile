@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { socketService } from '../services/socketService';
 import { useAuth } from './AuthContext';
 import { userAPI, friendshipAPI, messageAPI, conversationAPI } from '../services/api';
@@ -8,8 +9,8 @@ import {
   RTCIceCandidate,
   RTCSessionDescription,
   mediaDevices,
-  MediaStream,
-} from 'react-native-webrtc';
+  type MediaStream,
+} from '../services/webrtc';
 
 interface CallContextType {
   callState: 'idle' | 'incoming' | 'outgoing' | 'connected' | 'group-connected';
@@ -63,10 +64,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
 
   // WebRTC Refs
   const localStreamRef = useRef<MediaStream | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const peerConnectionRef = useRef<any | null>(null);
   const remoteIceCandidatesQueue = useRef<any[]>([]);
   
-  const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
+  const peerConnectionsRef = useRef<Record<string, any>>({});
   const groupIceQueuesRef = useRef<Record<string, any[]>>({});
 
   useEffect(() => { callStateRef.current = callState; }, [callState]);
@@ -116,6 +117,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
 
   const getMediaStream = async (type: 'video' | 'audio') => {
     try {
+      if (!mediaDevices?.getUserMedia) {
+        console.warn(`WebRTC media devices are not available on ${Platform.OS}`);
+        return null;
+      }
       const isVideo = type === 'video';
       const stream = await mediaDevices.getUserMedia({
         audio: true,
@@ -143,6 +148,11 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
   }, [callState]);
 
   const initPeerConnection = (otherUserId: string, conversationId: string) => {
+    if (!RTCPeerConnection) {
+      console.warn(`RTCPeerConnection is not available on ${Platform.OS}`);
+      return null;
+    }
+
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track: any) => pc.addTrack(track, localStreamRef.current!));
@@ -169,6 +179,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     setCallState('outgoing');
 
     const pc = initPeerConnection(receiverId, convId);
+    if (!pc) {
+      resetCallState({ avoidLogging: true });
+      return;
+    }
     fetchParticipantProfile(receiverId);
     try {
       const offer = await pc.createOffer({});
@@ -195,6 +209,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     if (!stream) { rejectCall(); return; }
 
     const pc = initPeerConnection(callData.from, callData.conversationId);
+    if (!pc) {
+      rejectCall();
+      return;
+    }
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
       while (remoteIceCandidatesQueue.current.length > 0) {
@@ -271,6 +289,10 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
 
   const initGroupPeer = (targetUserId: string, conversationId: string) => {
     if (!targetUserId) return null;
+    if (!RTCPeerConnection) {
+      console.warn(`RTCPeerConnection is not available on ${Platform.OS}`);
+      return null;
+    }
     
     // Check if existing peer connection is still usable
     const existingPc = peerConnectionsRef.current[targetUserId];

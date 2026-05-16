@@ -6,11 +6,18 @@ const FALLBACK_AVATAR =
 export const formatImageUrl = (url?: string | null) => {
   if (!url) return FALLBACK_AVATAR;
 
-  // Replace localhost or 127.0.0.1 with correct API_BASE_URL dynamically
-  if (url.includes("localhost:") || url.includes("127.0.0.1:")) {
+  // Replace machine-local backend URLs with the active API host for web/mobile.
+  if (/^https?:\/\//i.test(url)) {
     try {
       const parsedUrl = new URL(url);
-      return `${API_BASE_URL}${parsedUrl.pathname}${parsedUrl.search}`;
+      const isLocalBackendHost =
+        /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)$/.test(
+          parsedUrl.hostname,
+        );
+
+      if (isLocalBackendHost && parsedUrl.port) {
+        return `${API_BASE_URL}${parsedUrl.pathname}${parsedUrl.search}`;
+      }
     } catch (e) {
       return url;
     }

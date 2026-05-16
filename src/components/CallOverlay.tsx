@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Dimensions, ScrollView } from 'react-native';
-import { RTCView } from 'react-native-webrtc';
+import RTCVideoView from './RTCVideoView';
 import { useCall } from '../contexts/CallContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +30,11 @@ const CallOverlay = () => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const getStreamURL = (stream: any) => {
+    if (!stream) return "";
+    return typeof stream.toURL === "function" ? stream.toURL() : stream.id || "";
   };
 
   if (callState === 'idle') return null;
@@ -75,13 +80,14 @@ const CallOverlay = () => {
           const part = participants[key] || { name: 'User' };
           // Use signaled camera state (reliable) instead of track checks (unreliable for remote)
           const remoteCamOff = participantCameraOff[key] === true;
-          const showVideo = isVideo && !remoteCamOff && stream && stream.toURL();
+          const showVideo = isVideo && !remoteCamOff && stream && getStreamURL(stream);
           
           return (
             <View key={key} style={[styles.gridItem, { width: layout.itemWidth, height: layout.itemHeight }]}>
               {showVideo ? (
-                <RTCView
-                  streamURL={stream.toURL()}
+                <RTCVideoView
+                  stream={stream}
+                  streamURL={getStreamURL(stream)}
                   style={styles.gridVideo}
                   objectFit="cover"
                 />
@@ -158,12 +164,13 @@ const CallOverlay = () => {
               const otherAvatar = otherPart.avatar || avatar;
               // Use signaled camera state for remote participant
               const remoteCamOff = otherKey ? participantCameraOff[otherKey] === true : false;
-              const remoteHasVideo = isVideo && !remoteCamOff && remoteStream && remoteStream.toURL();
+              const remoteHasVideo = isVideo && !remoteCamOff && remoteStream && getStreamURL(remoteStream);
               
               return remoteHasVideo ? (
                 <View style={{ flex: 1 }}>
-                  <RTCView
-                    streamURL={remoteStream.toURL()}
+                  <RTCVideoView
+                    stream={remoteStream}
+                    streamURL={getStreamURL(remoteStream)}
                     style={styles.remoteVideo}
                     objectFit="cover"
                   />
@@ -189,9 +196,10 @@ const CallOverlay = () => {
             {/* PIP Local Video */}
             {isVideo && (
               <View style={styles.localVideoContainer}>
-                {!isCameraOff && localStream && localStream.toURL() ? (
-                  <RTCView
-                    streamURL={localStream.toURL()}
+                {!isCameraOff && localStream && getStreamURL(localStream) ? (
+                  <RTCVideoView
+                    stream={localStream}
+                    streamURL={getStreamURL(localStream)}
                     style={styles.localVideo}
                     objectFit="cover"
                     zOrder={1}

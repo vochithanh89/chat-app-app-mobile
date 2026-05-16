@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -66,7 +67,8 @@ import { useCall } from "../contexts/CallContext";
 /** --- TYPES --- **/
 type RootStackParamList = {
   Chat: { user: any; conversationId?: string };
-  ChatOptions: { user: any };
+  ChatOptions: { user: any; conversationId?: string };
+  GroupOptions: { group: any };
 };
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
@@ -106,8 +108,12 @@ const ChatScreen = () => {
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [conversation, setConversation] = useState<any>(null);
+  const [chatNickname, setChatNickname] = useState("");
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(
+    routeConversationId || routeUser?.conversationId || null,
+  );
 
   // Modal/Overlay States
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
@@ -125,10 +131,42 @@ const ChatScreen = () => {
 
   /** --- LOGIC XỬ LÝ DỮ LIỆU --- **/
 
+  const resolveConversationId = useCallback(async () => {
+    if (conversationId) {
+      return conversationId;
+    }
+
+    const routeConversation = routeConversationId || routeUser?.conversationId;
+    if (routeConversation) {
+      setConversationId(routeConversation);
+      return routeConversation;
+    }
+
+    const targetUser = normalizeUser(routeUser);
+    const targetUserId = targetUser?.uuid || targetUser?.id;
+    if (!targetUserId || targetUser.isGroup) {
+      return null;
+    }
+
+    const response = await conversationAPI.createDirectConversation(targetUserId);
+    const rawConversation = response?.data?.conversation || response?.conversation || null;
+    if (!rawConversation) {
+      return null;
+    }
+
+    const normalized = normalizeConversation(rawConversation, currentUserId);
+    setConversation(normalized);
+    setConversationId(normalized.id);
+    return normalized.id;
+  }, [conversationId, currentUserId, routeConversationId, routeUser]);
+
   const loadData = useCallback(async () => {
     try {
-      const convId = routeConversationId || routeUser?.conversationId;
-      if (!convId) return;
+      const convId = await resolveConversationId();
+      if (!convId) {
+        setMessages([]);
+        return;
+      }
 
       const [convRes, msgRes] = await Promise.all([
         conversationAPI.getConversationById(convId),
@@ -149,7 +187,7 @@ const ChatScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [routeConversationId, currentUserId]);
+  }, [currentUserId, resolveConversationId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -157,6 +195,26 @@ const ChatScreen = () => {
       const interval = setInterval(loadData, 5000); // Polling 5s
       return () => clearInterval(interval);
     }, [loadData])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const loadNickname = async () => {
+        const convId = conversation?.id || conversationId || routeConversationId || routeUser?.conversationId;
+        const userId = routeUser?.id || routeUser?.uuid;
+        if (!convId || !userId) {
+          if (active) setChatNickname("");
+          return;
+        }
+        const stored = await AsyncStorage.getItem(`chat:nickname:${convId}:${userId}`);
+        if (active) setChatNickname(stored || "");
+      };
+      loadNickname();
+      return () => {
+        active = false;
+      };
+    }, [conversation?.id, conversationId, routeConversationId, routeUser?.conversationId, routeUser?.id, routeUser?.uuid])
   );
 
   const messageById = useMemo(() => {
@@ -175,7 +233,11 @@ const ChatScreen = () => {
 
     try {
       setSending(true);
-      const convId = routeConversationId || conversation?.id;
+      const convId = await resolveConversationId();
+      if (!convId) {
+        Alert.alert("Lá»—i", "KhÃ´ng thá»ƒ má»Ÿ cuá»™c trÃ² chuyá»‡n");
+        return;
+      }
 
       let attachmentIds: string[] = [];
       if (pendingAttachments.length > 0) {
@@ -482,7 +544,7 @@ const ChatScreen = () => {
         </TouchableOpacity>
         <Image source={{ uri: routeUser?.avatar || FALLBACK_AVATAR }} style={styles.avatar} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{routeUser?.name || "Người dùng"}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{chatNickname || routeUser?.name || "Người dùng"}</Text>
           <Text style={styles.headerSub}>{routeUser?.online ? "Vừa mới truy cập" : "Offline"}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -496,7 +558,10 @@ const ChatScreen = () => {
             if (conversation?.isGroup || conversation?.type === 'group') {
               navigation.navigate("GroupOptions", { group: conversation });
             } else {
-              navigation.navigate("ChatOptions", { user: routeUser });
+              navigation.navigate("ChatOptions", {
+                user: routeUser,
+                conversationId: conversation?.id || conversationId || routeUser?.conversationId,
+              });
             }
           }}>
             <Ionicons name="menu-outline" size={26} color="white" />

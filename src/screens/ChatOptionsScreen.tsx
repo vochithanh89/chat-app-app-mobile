@@ -1,17 +1,25 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   Image,
+  Linking,
+  Modal,
   ScrollView,
   StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
-import { friendshipAPI, conversationAPI } from "../services/api";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { conversationAPI, messageAPI } from "../services/api";
+import { formatImageUrl, normalizeConversation, normalizeMessage, normalizeUser } from "../services/chatMappers";
 import { getLargeAvatar } from "../utils/avatarUtils";
+import { useAuth } from "../contexts/AuthContext";
 
 interface FileItem {
   id: string;
@@ -26,314 +34,427 @@ interface LinkItem {
   url: string;
 }
 
+interface MediaItem {
+  id: string;
+  url: string;
+  type: "image" | "video";
+}
+
+const urlRegex = /(https?:\/\/[^\s]+)/gi;
+
+const formatBytes = (value?: number) => {
+  if (!value) return "Unknown size";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (fileName: string) => {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "document-text";
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "grid";
+  if (lower.endsWith(".pptx") || lower.endsWith(".ppt")) return "easel";
+  if (lower.endsWith(".docx") || lower.endsWith(".doc")) return "document";
+  if (lower.endsWith(".zip") || lower.endsWith(".rar")) return "archive";
+  if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")) return "videocam";
+  if (lower.endsWith(".mp3") || lower.endsWith(".wav")) return "musical-notes";
+  return "document";
+};
+
+const openUrl = async (url: string) => {
+  if (!url) return;
+  const canOpen = await Linking.canOpenURL(url);
+  if (canOpen) {
+    await Linking.openURL(url);
+  } else {
+    Alert.alert("Cannot open", url);
+  }
+};
+
 const ChatOptionsScreen = () => {
   const route = useRoute();
-  const navigation = useNavigation();
-  const { user } = route.params as { user: any };
+  const navigation = useNavigation<any>();
+  const { user: currentUser } = useAuth();
+  const { user: routeUser, conversationId: routeConversationId } = route.params as {
+    user: any;
+    conversationId?: string;
+  };
 
-  // Ẩn tab bar khi vào ChatOptionsScreen
+  const currentUserId = currentUser?.uuid || currentUser?.id || null;
+  const normalizedRouteUser = useMemo(() => normalizeUser(routeUser || {}), [routeUser]);
+  const initialConversationId = routeConversationId || routeUser?.conversationId || null;
+
+  const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
+  const [conversation, setConversation] = useState<any>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nickname, setNickname] = useState("");
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       const tabNavigator = navigation.getParent() as any;
-      if (tabNavigator) {
-        tabNavigator.setOptions({
-          tabBarStyle: { display: 'none' }
-        });
-      }
-      
-      return () => {
-        // Hiện lại tab bar khi rời khỏi ChatOptionsScreen
-        if (tabNavigator) {
-          tabNavigator.setOptions({
-            tabBarStyle: { display: 'flex' }
-          });
-        }
-      };
-    }, [navigation])
+      tabNavigator?.setOptions({ tabBarStyle: { display: "none" } });
+      return () => tabNavigator?.setOptions({ tabBarStyle: { display: "flex" } });
+    }, [navigation]),
   );
 
-  // Thêm useEffect để đảm bảo tab bar được ẩn
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubscribe = navigation.addListener("focus", () => {
       const tabNavigator = navigation.getParent() as any;
-      if (tabNavigator) {
-        tabNavigator.setOptions({
-          tabBarStyle: { display: 'none' }
-        });
-      }
+      tabNavigator?.setOptions({ tabBarStyle: { display: "none" } });
     });
-
-    const unsubscribeBlur = navigation.addListener('blur', () => {
+    const unsubscribeBlur = navigation.addListener("blur", () => {
       const tabNavigator = navigation.getParent() as any;
-      if (tabNavigator) {
-        tabNavigator.setOptions({
-          tabBarStyle: { display: 'flex' }
-        });
-      }
+      tabNavigator?.setOptions({ tabBarStyle: { display: "flex" } });
     });
-
     return () => {
       unsubscribe();
       unsubscribeBlur();
     };
   }, [navigation]);
 
-  // Mock data - 7 items mỗi loại
-  const mockSharedMedia = {
-    images: [
-      'https://picsum.photos/200/200?random=1',
-      'https://picsum.photos/200/200?random=2',
-      'https://picsum.photos/200/200?random=3',
-      'https://picsum.photos/200/200?random=4',
-      'https://picsum.photos/200/200?random=5',
-      'https://picsum.photos/200/200?random=6',
-      'https://picsum.photos/200/200?random=7',
-    ],
-    files: [
-      { id: '1', name: 'Hợp đồng.pdf', size: '2.5 MB', url: '#' },
-      { id: '2', name: 'Báo cáo.xlsx', size: '1.8 MB', url: '#' },
-      { id: '3', name: 'Presentation.pptx', size: '5.2 MB', url: '#' },
-      { id: '4', name: 'Document.docx', size: '890 KB', url: '#' },
-      { id: '5', name: 'Hình ảnh.zip', size: '12.3 MB', url: '#' },
-      { id: '6', name: 'Video.mp4', size: '45.6 MB', url: '#' },
-      { id: '7', name: 'Audio.mp3', size: '4.2 MB', url: '#' },
-    ] as FileItem[],
-    links: [
-      { id: '1', title: 'React Native Documentation', url: 'https://reactnative.dev' },
-      { id: '2', title: 'Tailwind CSS Guide', url: 'https://tailwindcss.com' },
-      { id: '3', title: 'Expo Documentation', url: 'https://docs.expo.dev' },
-      { id: '4', title: 'TypeScript Handbook', url: 'https://typescriptlang.org' },
-      { id: '5', title: 'GitHub Repository', url: 'https://github.com' },
-      { id: '6', title: 'Stack Overflow', url: 'https://stackoverflow.com' },
-      { id: '7', title: 'YouTube Tutorial', url: 'https://youtube.com' },
-    ] as LinkItem[],
+  const nicknameKey = conversationId
+    ? `chat:nickname:${conversationId}:${normalizedRouteUser.id || normalizedRouteUser.uuid}`
+    : null;
+
+  const loadNickname = useCallback(async () => {
+    if (!nicknameKey) return;
+    const stored = await AsyncStorage.getItem(nicknameKey);
+    setNickname(stored || "");
+    setNicknameDraft(stored || normalizedRouteUser.name || "");
+  }, [nicknameKey, normalizedRouteUser.name]);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      let convId = conversationId || routeConversationId || routeUser?.conversationId || null;
+      if (!convId && normalizedRouteUser.id) {
+        const created = await conversationAPI.createDirectConversation(normalizedRouteUser.id);
+        const raw = created?.data?.conversation || created?.conversation || null;
+        if (raw) {
+          const normalized = normalizeConversation(raw, currentUserId);
+          convId = normalized.id;
+          setConversationId(convId);
+          setConversation(normalized);
+        }
+      }
+
+      if (!convId) {
+        setMessages([]);
+        return;
+      }
+
+      const [convRes, msgRes] = await Promise.all([
+        conversationAPI.getConversationById(convId),
+        messageAPI.getMessages(convId, { limit: 100 }),
+      ]);
+      const rawConversation = convRes?.data?.conversation || convRes?.conversation || convRes?.data || convRes;
+      const rawMessages = msgRes?.data?.messages || msgRes?.messages || [];
+      setConversation(normalizeConversation(rawConversation, currentUserId));
+      setMessages(rawMessages.map((item: any) => normalizeMessage(item, currentUserId)));
+    } catch (error: any) {
+      Alert.alert("Error", error?.response?.data?.message || error?.message || "Cannot load chat options.");
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId, currentUserId, normalizedRouteUser.id, routeConversationId, routeUser?.conversationId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    loadNickname();
+  }, [loadNickname]);
+
+  const shared = useMemo(() => {
+    const media: MediaItem[] = [];
+    const files: FileItem[] = [];
+    const links: LinkItem[] = [];
+    const seenLinks = new Set<string>();
+
+    messages.forEach((message) => {
+      message.attachments?.forEach((attachment: any) => {
+        if (!attachment.url) return;
+        if (attachment.type === "image" || attachment.type === "video") {
+          media.push({ id: attachment.id, url: attachment.url, type: attachment.type });
+        } else {
+          files.push({
+            id: attachment.id,
+            name: attachment.fileName || attachment.name || "Attachment",
+            size: formatBytes(attachment.fileSize),
+            url: attachment.url,
+          });
+        }
+      });
+
+      const urls = String(message.content || "").match(urlRegex) || [];
+      urls.forEach((url: string, index: number) => {
+        const cleanUrl = url.replace(/[),.]+$/, "");
+        if (seenLinks.has(cleanUrl)) return;
+        seenLinks.add(cleanUrl);
+        links.push({
+          id: `${message.id}-${index}`,
+          title: cleanUrl.replace(/^https?:\/\//, ""),
+          url: cleanUrl,
+        });
+      });
+    });
+
+    return { media, files, links };
+  }, [messages]);
+
+  const displayName = nickname || normalizedRouteUser.name || conversation?.name || "Người dùng";
+  const avatar = formatImageUrl(normalizedRouteUser.avatar || normalizedRouteUser.avatarUrl) || getLargeAvatar(displayName);
+
+  const saveNickname = async () => {
+    if (!nicknameKey) return;
+    const value = nicknameDraft.trim();
+    if (value) {
+      await AsyncStorage.setItem(nicknameKey, value);
+    } else {
+      await AsyncStorage.removeItem(nicknameKey);
+    }
+    setNickname(value);
+    setShowNicknameModal(false);
   };
 
-  const getFileIcon = (fileName: string) => {
-    if (fileName.includes('.pdf')) return 'document-text';
-    if (fileName.includes('.xlsx') || fileName.includes('.xls')) return 'grid';
-    if (fileName.includes('.pptx') || fileName.includes('.ppt')) return 'easel';
-    if (fileName.includes('.docx') || fileName.includes('.doc')) return 'document';
-    if (fileName.includes('.zip') || fileName.includes('.rar')) return 'archive';
-    if (fileName.includes('.mp4') || fileName.includes('.avi')) return 'videocam';
-    if (fileName.includes('.mp3') || fileName.includes('.wav')) return 'musical-notes';
-    return 'document';
+  const handleDeleteConversation = () => {
+    if (!conversationId) return;
+    const isGroup = conversation?.isGroup || conversation?.type === "group";
+    const title = isGroup ? "Rời/xóa nhóm" : "Xóa lịch sử trò chuyện";
+    const message = isGroup
+      ? "Nếu bạn là chủ nhóm, nhóm sẽ bị giải tán. Nếu không, bạn sẽ rời nhóm."
+      : "Tin nhắn đã tải sẽ được xóa ở phía bạn.";
+
+    Alert.alert(title, message, [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setDeleting(true);
+            if (isGroup) {
+              const ownerId = conversation?.ownerId || conversation?.owner_id;
+              if (ownerId && currentUserId && String(ownerId) === String(currentUserId)) {
+                await conversationAPI.disbandGroup(conversationId);
+              } else {
+                await conversationAPI.leaveGroup(conversationId);
+              }
+            } else {
+              await Promise.all(messages.map((item) => messageAPI.deleteForMe(item.id)));
+            }
+            navigation.popToTop?.();
+            navigation.goBack();
+          } catch (error: any) {
+            Alert.alert("Error", error?.response?.data?.message || error?.message || "Cannot delete conversation.");
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   };
 
-  const renderImages = () => {
-    const displayImages = mockSharedMedia.images.slice(0, 4);
-    const hasMore = mockSharedMedia.images.length > 4;
-
+  const renderMedia = () => {
+    const displayItems = shared.media.slice(0, 8);
     return (
       <View className="mb-6">
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center">
-            <Ionicons name="images" size={18} color="#666" className="mr-2" />
-            <Text className="font-semibold text-gray-800">Đã gửi ({mockSharedMedia.images.length})</Text>
+            <Ionicons name="images" size={18} color="#666" />
+            <Text className="font-semibold text-gray-800 ml-2">Đã gửi ({shared.media.length})</Text>
           </View>
-          {hasMore && (
-            <TouchableOpacity className="px-3 py-1 bg-blue-50 rounded-full">
-              <Text className="text-blue-600 text-sm font-medium">Xem tất cả</Text>
-            </TouchableOpacity>
-          )}
         </View>
-        
-        <View className="flex-row flex-wrap">
-          {displayImages.map((image, index) => (
-            <Image
-              key={index}
-              source={{ uri: image }}
-              className="w-20 h-20 rounded-lg mr-2 mb-2"
-              style={{ width: 80, height: 80 }}
-            />
-          ))}
-          {hasMore && (
-            <View className="w-20 h-20 rounded-lg mr-2 mb-2 bg-gray-100 items-center justify-center">
-              <Text className="text-gray-600 font-semibold">+{mockSharedMedia.images.length - 4}</Text>
-            </View>
-          )}
-        </View>
+
+        {displayItems.length === 0 ? (
+          <Text className="text-gray-500 text-sm">Chưa có ảnh hoặc video.</Text>
+        ) : (
+          <View className="flex-row flex-wrap">
+            {displayItems.map((item) => (
+              <TouchableOpacity key={item.id} onPress={() => openUrl(item.url)}>
+                {item.type === "image" ? (
+                  <Image source={{ uri: item.url }} className="w-20 h-20 rounded-lg mr-2 mb-2 bg-gray-100" style={{ width: 80, height: 80 }} />
+                ) : (
+                  <View className="w-20 h-20 rounded-lg mr-2 mb-2 bg-gray-900 items-center justify-center">
+                    <Ionicons name="play-circle" size={28} color="white" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+            {shared.media.length > displayItems.length && (
+              <View className="w-20 h-20 rounded-lg mr-2 mb-2 bg-gray-100 items-center justify-center">
+                <Text className="text-gray-600 font-semibold">+{shared.media.length - displayItems.length}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
 
   const renderFiles = () => {
-    const displayFiles = mockSharedMedia.files.slice(0, 4);
-    const hasMore = mockSharedMedia.files.length > 4;
-
+    const displayFiles = shared.files.slice(0, 6);
     return (
       <View className="mb-6">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center">
-            <Ionicons name="folder" size={18} color="#666" className="mr-2" />
-            <Text className="font-semibold text-gray-800">File ({mockSharedMedia.files.length})</Text>
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="folder" size={18} color="#666" />
+          <Text className="font-semibold text-gray-800 ml-2">File ({shared.files.length})</Text>
+        </View>
+
+        {displayFiles.length === 0 ? (
+          <Text className="text-gray-500 text-sm">Chưa có file.</Text>
+        ) : (
+          <View>
+            {displayFiles.map((file) => (
+              <TouchableOpacity key={file.id} className="flex-row items-center p-2 bg-gray-50 rounded-lg mb-2" onPress={() => openUrl(file.url)}>
+                <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
+                  <Ionicons name={getFileIcon(file.name) as any} size={20} color="#0068FF" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{file.name}</Text>
+                  <Text className="text-xs text-gray-500">{file.size}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
-          {hasMore && (
-            <TouchableOpacity className="px-3 py-1 bg-blue-50 rounded-full">
-              <Text className="text-blue-600 text-sm font-medium">Xem tất cả</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        <View className="space-y-2">
-          {displayFiles.map((file) => (
-            <TouchableOpacity key={file.id} className="flex-row items-center p-2 bg-gray-50 rounded-lg">
-              <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
-                <Ionicons name={getFileIcon(file.name) as any} size={20} color="#0068FF" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{file.name}</Text>
-                <Text className="text-xs text-gray-500">{file.size}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-          {hasMore && (
-            <TouchableOpacity className="flex-row items-center p-2 bg-gray-50 rounded-lg">
-              <View className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center mr-3">
-                <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-800">+{mockSharedMedia.files.length - 4} file khác</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
       </View>
     );
   };
 
   const renderLinks = () => {
-    const displayLinks = mockSharedMedia.links.slice(0, 4);
-    const hasMore = mockSharedMedia.links.length > 4;
-
+    const displayLinks = shared.links.slice(0, 6);
     return (
       <View className="mb-6">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center">
-            <Ionicons name="link" size={18} color="#666" className="mr-2" />
-            <Text className="font-semibold text-gray-800">Link ({mockSharedMedia.links.length})</Text>
+        <View className="flex-row items-center mb-3">
+          <Ionicons name="link" size={18} color="#666" />
+          <Text className="font-semibold text-gray-800 ml-2">Link ({shared.links.length})</Text>
+        </View>
+
+        {displayLinks.length === 0 ? (
+          <Text className="text-gray-500 text-sm">Chưa có link.</Text>
+        ) : (
+          <View>
+            {displayLinks.map((link) => (
+              <TouchableOpacity key={link.id} className="flex-row items-center p-2 bg-gray-50 rounded-lg mb-2" onPress={() => openUrl(link.url)}>
+                <View className="w-10 h-10 bg-green-100 rounded-lg items-center justify-center mr-3">
+                  <Ionicons name="globe" size={20} color="#10B981" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{link.title}</Text>
+                  <Text className="text-xs text-blue-600" numberOfLines={1}>{link.url}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
-          {hasMore && (
-            <TouchableOpacity className="px-3 py-1 bg-blue-50 rounded-full">
-              <Text className="text-blue-600 text-sm font-medium">Xem tất cả</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        <View className="space-y-2">
-          {displayLinks.map((link) => (
-            <TouchableOpacity key={link.id} className="flex-row items-center p-2 bg-gray-50 rounded-lg">
-              <View className="w-10 h-10 bg-green-100 rounded-lg items-center justify-center mr-3">
-                <Ionicons name="globe" size={20} color="#10B981" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{link.title}</Text>
-                <Text className="text-xs text-blue-600" numberOfLines={1}>{link.url}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-          {hasMore && (
-            <TouchableOpacity className="flex-row items-center p-2 bg-gray-50 rounded-lg">
-              <View className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center mr-3">
-                <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-800">+{mockSharedMedia.links.length - 4} link khác</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
       </View>
     );
   };
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
-      <StatusBar barStyle="light-content" backgroundColor="#d7d7d7" />
-      
-      {/* Header */}
+      <StatusBar barStyle="light-content" backgroundColor="#0068FF" />
+
       <View className="bg-blue-500 px-4 pt-3 pb-4 shadow-sm">
         <View className="flex-row items-center">
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            className="p-2 rounded-full mr-3"
-          >
+          <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 rounded-full mr-3">
             <Ionicons name="arrow-back" size={20} color="white" />
           </TouchableOpacity>
           <Text className="text-lg font-semibold text-white">Tùy chọn</Text>
         </View>
       </View>
 
-      {/* Content - ScrollView for mobile */}
-      <ScrollView 
-        className="flex-1"
-        showsVerticalScrollIndicator={true}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
-        style={{ flex: 1 }}
-        nestedScrollEnabled={true}
-      >
-        {/* User Info Section */}
-        <View className="bg-white px-4 py-4 mb-2">
-          <View className="items-center">
-            <Image
-              source={{ uri: user?.avatar || getLargeAvatar(user?.name) }}
-              className="w-20 h-20 rounded-full mb-3"
-              style={{ width: 80, height: 80 }}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#0068FF" />
+        </View>
+      ) : (
+        <ScrollView className="flex-1" showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: 20 }}>
+          <View className="bg-white px-4 py-4 mb-2">
+            <View className="items-center">
+              <Image source={{ uri: avatar }} className="w-20 h-20 rounded-full mb-3" style={{ width: 80, height: 80 }} />
+              <Text className="text-lg font-semibold text-gray-800">{displayName}</Text>
+              {nickname ? <Text className="text-xs text-gray-500 mt-1">Tên gốc: {normalizedRouteUser.name}</Text> : null}
+            </View>
+
+            <View className="flex-row mt-6">
+              <TouchableOpacity className="flex-1 flex-row items-center justify-center py-3 bg-blue-50 rounded-lg mr-2" onPress={() => Alert.alert("Tìm tin nhắn", "Chức năng tìm trong hội thoại chưa có trên mobile.")}>
+                <Ionicons name="search" size={18} color="#0068FF" />
+                <Text className="text-blue-600 font-medium ml-2">Tìm tin nhắn</Text>
+              </TouchableOpacity>
+              <TouchableOpacity className="flex-1 flex-row items-center justify-center py-3 bg-blue-50 rounded-lg ml-2" onPress={() => navigation.navigate("Profile", { user: normalizedRouteUser })}>
+                <Ionicons name="person" size={18} color="#0068FF" />
+                <Text className="text-blue-600 font-medium ml-2">Trang cá nhân</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View className="px-4 py-4">
+            {renderMedia()}
+            {renderFiles()}
+            {renderLinks()}
+          </View>
+
+          <View className="h-4 bg-gray-200" />
+
+          <View className="bg-white px-4 py-4">
+            <TouchableOpacity className="flex-row items-center py-3 border-b border-gray-100" onPress={() => setShowNicknameModal(true)}>
+              <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
+                <Ionicons name="create-outline" size={20} color="#0068FF" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-gray-800 font-medium">Đổi biệt danh</Text>
+                <Text className="text-xs text-gray-500">{nickname || "Chưa đặt biệt danh"}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity className="flex-row items-center py-3 border-b border-gray-100" onPress={() => Alert.alert("Tạo nhóm", "Chức năng tạo nhóm từ màn này chưa được nối UI.")}>
+              <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
+                <Ionicons name="people" size={20} color="#0068FF" />
+              </View>
+              <Text className="flex-1 text-gray-800 font-medium">Tạo nhóm với người này</Text>
+              <Ionicons name="chevron-forward" size={16} color="#666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity className="flex-row items-center py-3" onPress={handleDeleteConversation} disabled={deleting}>
+              <View className="w-10 h-10 bg-red-100 rounded-lg items-center justify-center mr-3">
+                {deleting ? <ActivityIndicator size="small" color="#EF4444" /> : <Ionicons name="trash" size={20} color="#EF4444" />}
+              </View>
+              <Text className="flex-1 text-red-500 font-medium">Xóa cuộc trò chuyện</Text>
+              <Ionicons name="chevron-forward" size={16} color="#666" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+
+      <Modal visible={showNicknameModal} transparent animationType="fade" onRequestClose={() => setShowNicknameModal(false)}>
+        <View className="flex-1 bg-black/40 items-center justify-center px-6">
+          <View className="bg-white rounded-2xl p-5 w-full">
+            <Text className="text-lg font-semibold text-gray-900 mb-3">Đổi biệt danh</Text>
+            <TextInput
+              value={nicknameDraft}
+              onChangeText={setNicknameDraft}
+              placeholder="Nhập biệt danh"
+              className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900 mb-4"
             />
-            <Text className="text-lg font-semibold text-gray-800">{user?.name || "Người dùng"}</Text>
-          </View>
-
-          {/* Action Buttons */}
-          <View className="flex-row mt-6 space-x-8">
-            <TouchableOpacity className="flex-1 flex-row items-center justify-center py-3 bg-blue-50 rounded-lg">
-              <Ionicons name="search" size={18} color="#0068FF" className="mr-2" />
-              <Text className="text-blue-600 font-medium">Tìm tin nhắn</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 flex-row items-center justify-center py-3 bg-blue-50 rounded-lg">
-              <Ionicons name="person" size={18} color="#0068FF" className="mr-2" />
-              <Text className="text-blue-600 font-medium">Trang cá nhân</Text>
-            </TouchableOpacity>
+            <View className="flex-row justify-end">
+              <TouchableOpacity className="px-4 py-2 mr-2" onPress={() => setShowNicknameModal(false)}>
+                <Text className="text-gray-600 font-medium">Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity className="px-4 py-2 bg-blue-500 rounded-lg" onPress={saveNickname}>
+                <Text className="text-white font-medium">Lưu</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-
-        {/* Shared Media Section */}
-        <View className="px-4 py-4">
-          {renderImages()}
-          {renderFiles()}
-          {renderLinks()}
-        </View>
-
-        {/* Gray Separator */}
-        <View className="h-4 bg-gray-200" />
-
-        {/* Actions Section */}
-        <View className="bg-white px-4 py-4">
-          <TouchableOpacity className="flex-row items-center py-3 border-b border-gray-100">
-            <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
-              <Ionicons name="people" size={20} color="#0068FF" />
-            </View>
-            <Text className="flex-1 text-gray-800 font-medium">Tạo nhóm với người này</Text>
-            <Ionicons name="chevron-forward" size={16} color="#666" />
-          </TouchableOpacity>
-
-          <TouchableOpacity className="flex-row items-center py-3 border-b border-gray-100">
-            <View className="w-10 h-10 bg-green-100 rounded-lg items-center justify-center mr-3">
-              <Ionicons name="person-add" size={20} color="#10B981" />
-            </View>
-            <Text className="flex-1 text-gray-800 font-medium">Thêm vào nhóm</Text>
-            <Ionicons name="chevron-forward" size={16} color="#666" />
-          </TouchableOpacity>
-
-          <TouchableOpacity className="flex-row items-center py-3">
-            <View className="w-10 h-10 bg-red-100 rounded-lg items-center justify-center mr-3">
-              <Ionicons name="trash" size={20} color="#EF4444" />
-            </View>
-            <Text className="flex-1 text-red-500 font-medium">Xóa lịch sử trò chuyện</Text>
-            <Ionicons name="chevron-forward" size={16} color="#666" />
-          </TouchableOpacity>
-
-        </View>
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 };

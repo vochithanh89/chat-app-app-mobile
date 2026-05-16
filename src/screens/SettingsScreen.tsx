@@ -33,7 +33,7 @@ const SettingsScreen = () => {
         <MenuItemComponent
           icon="person-outline"
           title="Profile"
-          onPress={() => navigation.navigate("Account")}
+          onPress={() => navigation.navigate("Profile")}
         />
 
         {/* Đổi mật khẩu */}

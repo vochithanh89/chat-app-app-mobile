@@ -210,7 +210,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await userAPI.uploadAvatar(imageUri);
       // Kiểm tra trả response structure và lấy dữ liệu đúng
-      const userData = response.data || response.data.data;
+      const userData = getResponseData(response);
       console.log('User Data to set:', userData);
       setUser(userData);
       return response;

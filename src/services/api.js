@@ -7,14 +7,75 @@ import { Platform } from "react-native";
 let memoryToken = null;
 let memoryRefreshToken = null;
 
+const isWeb = Platform.OS === "web";
+
+const webStorage = {
+  getItem: (key) => {
+    if (!isWeb || typeof window === "undefined") return null;
+    return window.localStorage?.getItem(key) || null;
+  },
+  setItem: (key, value) => {
+    if (!isWeb || typeof window === "undefined") return;
+    window.localStorage?.setItem(key, value);
+  },
+  removeItem: (key) => {
+    if (!isWeb || typeof window === "undefined") return;
+    window.localStorage?.removeItem(key);
+  },
+};
+
+const tokenStorage = {
+  getItem: async (key) => {
+    if (isWeb) {
+      const value = webStorage.getItem(key);
+      if (value) return value;
+    }
+
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch (error) {
+      console.error("Loi doc token:", error);
+      return key === "accessToken" ? memoryToken : memoryRefreshToken;
+    }
+  },
+  setItem: async (key, value) => {
+    if (key === "accessToken") memoryToken = value;
+    if (key === "refreshToken") memoryRefreshToken = value;
+
+    if (isWeb) {
+      webStorage.setItem(key, value);
+    }
+
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch (error) {
+      console.error("Loi luu token:", error);
+    }
+  },
+  removeItems: async (keys) => {
+    keys.forEach((key) => {
+      if (key === "accessToken") memoryToken = null;
+      if (key === "refreshToken") memoryRefreshToken = null;
+      if (isWeb) webStorage.removeItem(key);
+    });
+
+    try {
+      await AsyncStorage.multiRemove(keys);
+    } catch (error) {
+      console.error("Loi xoa token:", error);
+    }
+  },
+};
+
 const resolveApiBaseUrl = () => {
   const envUrl = (process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
   if (envUrl) {
     return envUrl;
   }
 
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return `http://${window.location.hostname}:3333`;
+  if (isWeb && typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    return `${protocol}//${window.location.hostname}:3333`;
   }
 
   const configApiUrl = (
@@ -63,6 +124,12 @@ const extractTokens = (response) => {
   };
 };
 
+const assertId = (value, label) => {
+  if (value === undefined || value === null || value === "") {
+    throw new Error(`${label} is required`);
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
@@ -77,12 +144,7 @@ let failedQueue = [];
 // Interceptor cho request - thêm token vào header
 api.interceptors.request.use(
   async (config) => {
-    let token = null;
-    try {
-      token = await AsyncStorage.getItem("accessToken");
-    } catch (error) {
-      console.error("Lỗi AsyncStorage trong request interceptor:", error);
-    }
+    let token = await tokenStorage.getItem("accessToken");
     // Sử dụng token trong bộ nhớ nếu AsyncStorage thất bại
     if (!token && memoryToken) {
       token = memoryToken;
@@ -123,7 +185,7 @@ api.interceptors.response.use(
     originalRequest._retry = true;
 
     try {
-      const refreshToken = await AsyncStorage.getItem("refreshToken");
+      const refreshToken = await tokenStorage.getItem("refreshToken");
       if (refreshToken) {
         const response = await axios.post(
           `${API_BASE_URL}/api/v1/auth/refresh`,
@@ -136,8 +198,7 @@ api.interceptors.response.use(
         if (!accessToken) {
           throw new Error("Khong lay duoc access token tu API refresh");
         }
-        await AsyncStorage.setItem("accessToken", accessToken);
-        memoryToken = accessToken; // Cập nhật memory token
+        await tokenStorage.setItem("accessToken", accessToken);
 
         // Cập nhật header cho request gốc
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
@@ -161,7 +222,7 @@ api.interceptors.response.use(
 
       // Xóa tokens khi refresh thất bại
       try {
-        await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+        await tokenStorage.removeItems(["accessToken", "refreshToken"]);
       } catch (e) {
         console.log("Lỗi xóa AsyncStorage:", e);
       }
@@ -195,10 +256,8 @@ export const authAPI = {
       throw new Error("API login khong tra ve day du accessToken/refreshToken");
     }
     try {
-      await AsyncStorage.setItem("accessToken", accessToken);
-      await AsyncStorage.setItem("refreshToken", refreshToken);
-      memoryToken = accessToken;
-      memoryRefreshToken = refreshToken;
+      await tokenStorage.setItem("accessToken", accessToken);
+      await tokenStorage.setItem("refreshToken", refreshToken);
     } catch (error) {
       console.error("Lỗi lưu token trong login:", error);
     }
@@ -231,13 +290,11 @@ export const authAPI = {
       await api.post("/api/v1/auth/logout");
     } finally {
       try {
-        await AsyncStorage.multiRemove(["accessToken", "refreshToken"]);
+        await tokenStorage.removeItems(["accessToken", "refreshToken"]);
       } catch (error) {
         console.error("Lỗi xóa token trong logout:", error);
       }
       // Xóa token trong bộ nhớ
-      memoryToken = null;
-      memoryRefreshToken = null;
     }
   },
 
@@ -272,6 +329,11 @@ export const userAPI = {
     return response.data;
   },
 
+  getUserById: async (userId) => {
+    const response = await api.get(`/api/v1/users/${userId}`);
+    return response.data;
+  },
+
   // Cập nhật thông tin cá nhân
   updateProfile: async (profileData) => {
     const response = await api.put("/api/v1/user/profile", profileData);
@@ -285,23 +347,55 @@ export const userAPI = {
   },
 
   // Tải lên ảnh đại diện
-  uploadAvatar: async (imageUri) => {
+  uploadAvatar: async (imageInput) => {
     const formData = new FormData();
-    formData.append("file", {
-      uri: imageUri,
-      type: "image/jpeg",
-      name: "avatar.jpg",
-    });
-
-    const config = {};
-    if (Platform.OS !== "web") {
-      config.headers = {
-        "Content-Type": "multipart/form-data",
-      };
+    if (Platform.OS === "web") {
+      if (imageInput instanceof File) {
+        formData.append("avatar", imageInput, imageInput.name || "avatar.jpg");
+      } else if (imageInput instanceof Blob) {
+        formData.append("avatar", imageInput, "avatar.jpg");
+      } else if (imageInput?.file instanceof File) {
+        formData.append("avatar", imageInput.file, imageInput.file.name || "avatar.jpg");
+      } else if (typeof imageInput === "string" || imageInput?.uri) {
+        const blobResponse = await fetch(typeof imageInput === "string" ? imageInput : imageInput.uri);
+        const blob = await blobResponse.blob();
+        formData.append("avatar", blob, imageInput?.fileName || "avatar.jpg");
+      } else {
+        throw new Error("No browser avatar payload available for upload");
+      }
+    } else {
+      const imageUri = typeof imageInput === "string" ? imageInput : imageInput?.uri;
+      if (!imageUri) {
+        throw new Error("No avatar uri available for upload");
+      }
+      formData.append("avatar", {
+        uri: imageUri,
+        type: imageInput?.mimeType || imageInput?.type || "image/jpeg",
+        name: imageInput?.fileName || imageInput?.name || "avatar.jpg",
+      });
     }
 
-    const response = await api.post("/api/v1/user/avatar", formData, config);
-    return response.data;
+    const token = await tokenStorage.getItem("accessToken");
+    const response = await fetch(`${API_BASE_URL}/api/v1/user/avatar`, {
+      method: "PUT",
+      headers: {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const error = new Error(data?.message || data || "Failed to upload avatar");
+      error.response = { status: response.status, data };
+      throw error;
+    }
+
+    return data;
   },
 };
 
@@ -486,6 +580,7 @@ export const conversationAPI = {
 
 export const messageAPI = {
   getMessages: async (conversationId, params = {}) => {
+    assertId(conversationId, "conversationId");
     const response = await api.get(`/api/v1/conversations/${conversationId}/messages`, {
       params,
     });
@@ -493,6 +588,7 @@ export const messageAPI = {
   },
 
   sendMessage: async (conversationId, payload) => {
+    assertId(conversationId, "conversationId");
     const response = await api.post(`/api/v1/conversations/${conversationId}/messages`, payload);
     return response.data;
   },
