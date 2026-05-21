@@ -106,7 +106,8 @@ const resolveApiBaseUrl = () => {
   return "http://127.0.0.1:3333";
 };
 
-export const API_BASE_URL = resolveApiBaseUrl();
+// Hardcoded to bypass Metro cache during IP change
+export const API_BASE_URL = "http://192.168.1.120:3333";
 
 const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
 
@@ -157,6 +158,21 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+// Các endpoint auth không cần refresh token
+const AUTH_ENDPOINTS = [
+  "/api/v1/auth/login",
+  "/api/v1/auth/register",
+  "/api/v1/auth/refresh",
+  "/api/v1/auth/forgot-password",
+  "/api/v1/auth/reset-password",
+  "/api/v1/auth/verify-email",
+  "/api/v1/auth/resend-otp",
+];
+
+const isAuthEndpoint = (url) => {
+  return AUTH_ENDPOINTS.some((endpoint) => url?.includes(endpoint));
+};
+
 // Interceptor cho response - xử lý refresh token
 api.interceptors.response.use(
   (response) => response,
@@ -165,6 +181,11 @@ api.interceptors.response.use(
 
     // Nếu lỗi không phải 401 hoặc request đã được retry, reject
     if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    // Bỏ qua refresh token cho các endpoint auth (login, register, v.v.)
+    if (isAuthEndpoint(originalRequest.url)) {
       return Promise.reject(error);
     }
 
@@ -234,6 +255,29 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * Helper to determine device_type for login requests.
+ * Returns 'mobile_ios', 'mobile_android', or 'web'.
+ */
+const getDeviceType = () => {
+  if (Platform.OS === 'ios') return 'mobile_ios';
+  if (Platform.OS === 'android') return 'mobile_android';
+  return 'web';
+};
+
+/**
+ * Force-logout the current session (clear tokens).
+ * Called by socketService when the server emits `auth:session_replaced`.
+ */
+export const forceLogout = async () => {
+  try {
+    await tokenStorage.removeItems(["accessToken", "refreshToken"]);
+    await AsyncStorage.multiRemove(["userData", "isAuthenticated"]);
+  } catch (e) {
+    console.error("forceLogout error:", e);
+  }
+};
+
 // API xác thực người dùng
 export const authAPI = {
   // Đăng nhập
@@ -248,6 +292,7 @@ export const authAPI = {
       email: identifier,
       identifier,
       password,
+      device_type: getDeviceType(),
     });
 
     const { accessToken, refreshToken } = extractTokens(response);
@@ -342,7 +387,11 @@ export const userAPI = {
 
   // Đổi mật khẩu
   changePassword: async (passwordData) => {
-    const response = await api.post("/api/v1/auth/change-password", passwordData);
+    const dataWithDevice = {
+      ...passwordData,
+      device_type: getDeviceType()
+    };
+    const response = await api.post("/api/v1/auth/change-password", dataWithDevice);
     return response.data;
   },
 

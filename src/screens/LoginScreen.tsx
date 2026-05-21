@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,6 +14,26 @@ const LoginScreen = () => {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    const loadCredentials = async () => {
+      try {
+        const savedEmail = await AsyncStorage.getItem('saved_email');
+        const savedPassword = await AsyncStorage.getItem('saved_password');
+        const isRemembered = await AsyncStorage.getItem('remember_me');
+        
+        if (isRemembered === 'true' && savedEmail && savedPassword) {
+          setIdentifier(savedEmail);
+          setPassword(savedPassword);
+          setRememberMe(true);
+        }
+      } catch (error) {
+        console.error('Failed to load credentials', error);
+      }
+    };
+    loadCredentials();
+  }, []);
 
   const handleLogin = async () => {
     if (!identifier || !password) {
@@ -21,6 +42,17 @@ const LoginScreen = () => {
     }
     try {
       await login(identifier, password);
+      
+      if (rememberMe) {
+        await AsyncStorage.setItem('saved_email', identifier);
+        await AsyncStorage.setItem('saved_password', password);
+        await AsyncStorage.setItem('remember_me', 'true');
+      } else {
+        await AsyncStorage.removeItem('saved_email');
+        await AsyncStorage.removeItem('saved_password');
+        await AsyncStorage.setItem('remember_me', 'false');
+      }
+      
       // AuthWrapper sẽ tự động chuyển sang MainApp khi isAuthenticated thay đổi
     } catch (error) {
       const message =
@@ -90,11 +122,25 @@ const LoginScreen = () => {
             </View>
           </View>
 
-          <TouchableOpacity className="self-end mb-6">
-            <Text className="text-blue-500 text-sm" onPress={() => {
-              navigation.navigate("ForgotPassword");
-            }}>Forgot Password?</Text>
-          </TouchableOpacity>
+          <View className="flex-row justify-between items-center mb-6">
+            <TouchableOpacity 
+              className="flex-row items-center"
+              onPress={() => setRememberMe(!rememberMe)}
+            >
+              <Ionicons
+                name={rememberMe ? "checkbox" : "square-outline"}
+                size={22}
+                color={rememberMe ? "#3B82F6" : "#9CA3AF"}
+              />
+              <Text className="ml-2 text-gray-700">Nhớ mật khẩu</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity>
+              <Text className="text-blue-500 text-sm" onPress={() => {
+                navigation.navigate("ForgotPassword");
+              }}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Login Button */}

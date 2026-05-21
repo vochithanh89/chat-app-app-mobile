@@ -17,6 +17,7 @@ import AccountScreen from "../screens/AccountScreen";
 import ChangePasswordScreen from "../screens/ChangePasswordScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import GroupOptionsScreen from "../screens/GroupOptionsScreen";
+import QrScanScreen from "../screens/QrScanScreen";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../contexts/AuthContext";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -121,6 +122,8 @@ export default function MainNavigator() {
           <Stack.Screen name="ChatOptions" component={ChatOptionsScreen} />
           <Stack.Screen name="GroupOptions" component={GroupOptionsScreen} />
           <Stack.Screen name="Account" component={AccountScreen} />
+          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+          <Stack.Screen name="QrScan" component={QrScanScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthWrapper>
