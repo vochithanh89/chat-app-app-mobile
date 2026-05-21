@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +16,8 @@ const RegisterScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   // Inline error state per field
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -50,6 +52,9 @@ const RegisterScreen = () => {
     else if (password !== confirmPassword)
       newErrors.confirmPassword = "Mật khẩu xác nhận không khớp";
 
+    if (!acceptedTerms)
+      newErrors.acceptedTerms = "Bạn phải đồng ý với các điều khoản sử dụng";
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -68,6 +73,7 @@ const RegisterScreen = () => {
         phone: phone.trim(),
         password,
         password_confirmation: confirmPassword,
+        accepted_terms: acceptedTerms,
       });
 
       navigation.replace("VerifyEmail", {
@@ -226,6 +232,31 @@ const RegisterScreen = () => {
           </View>
         </View>
 
+        <View className="mb-6 flex-row items-start">
+          <TouchableOpacity
+            onPress={() => { setAcceptedTerms(!acceptedTerms); clearFieldError("acceptedTerms"); }}
+            className="mr-3 mt-0.5"
+          >
+            <Ionicons
+              name={acceptedTerms ? "checkbox" : "square-outline"}
+              size={24}
+              color={acceptedTerms ? "#3B82F6" : errors.acceptedTerms ? "#F87171" : "#9CA3AF"}
+            />
+          </TouchableOpacity>
+          <View className="flex-1">
+            <Text className="text-gray-700">
+              Tôi đồng ý với các{" "}
+              <Text 
+                className="text-blue-500 font-semibold"
+                onPress={() => setShowTerms(true)}
+              >
+                điều khoản sử dụng
+              </Text>
+            </Text>
+            <ErrorText field="acceptedTerms" />
+          </View>
+        </View>
+
         <ButtonComponent
           title="Create Account"
           onPress={handleRegister}
@@ -245,6 +276,88 @@ const RegisterScreen = () => {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Terms Modal */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTerms(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-center px-4 py-12">
+          <View className="bg-white rounded-2xl flex-1 overflow-hidden">
+            <View className="p-4 border-b border-gray-200 flex-row justify-between items-center bg-blue-500">
+              <Text className="text-lg font-bold text-white">Điều khoản sử dụng</Text>
+              <TouchableOpacity onPress={() => setShowTerms(false)}>
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView className="p-4">
+              <Text className="text-gray-800 leading-6 mb-8">
+                <Text className="font-bold">1. Chấp nhận điều khoản{"\n"}</Text>
+                Khi đăng ký tài khoản hoặc sử dụng ứng dụng, người dùng đồng ý tuân thủ toàn bộ Điều khoản sử dụng này và các chính sách liên quan của ứng dụng.{"\n\n"}
+                
+                <Text className="font-bold">2. Tài khoản người dùng{"\n"}</Text>
+                Người dùng phải cung cấp thông tin chính xác khi đăng ký tài khoản.{"\n"}
+                Người dùng tự chịu trách nhiệm bảo mật tài khoản và mật khẩu.{"\n"}
+                Không được sử dụng tài khoản của người khác khi chưa được cho phép.{"\n"}
+                Ứng dụng có quyền khóa hoặc xóa tài khoản nếu phát hiện vi phạm.{"\n\n"}
+                
+                <Text className="font-bold">3. Quy tắc sử dụng{"\n"}</Text>
+                Người dùng cam kết không:{"\n"}
+                - Đăng tải nội dung vi phạm pháp luật.{"\n"}
+                - Xúc phạm, quấy rối, đe dọa người khác.{"\n"}
+                - Phát tán virus, mã độc hoặc spam.{"\n"}
+                - Mạo danh cá nhân hoặc tổ chức khác.{"\n"}
+                - Thu thập dữ liệu trái phép từ hệ thống.{"\n\n"}
+                
+                <Text className="font-bold">4. Nội dung người dùng{"\n"}</Text>
+                Người dùng chịu trách nhiệm đối với nội dung đã gửi hoặc đăng tải.{"\n"}
+                Ứng dụng có quyền xóa nội dung vi phạm mà không cần báo trước.{"\n"}
+                Người dùng cấp quyền cho ứng dụng lưu trữ và xử lý dữ liệu phục vụ hoạt động hệ thống.{"\n\n"}
+                
+                <Text className="font-bold">5. Quyền riêng tư{"\n"}</Text>
+                Thông tin cá nhân được thu thập và xử lý theo Chính sách bảo mật.{"\n"}
+                Ứng dụng cam kết không bán thông tin người dùng cho bên thứ ba trái phép.{"\n"}
+                Dữ liệu có thể được cung cấp cho cơ quan chức năng khi pháp luật yêu cầu.{"\n\n"}
+                
+                <Text className="font-bold">6. Quyền sở hữu trí tuệ{"\n"}</Text>
+                Mọi giao diện, logo, mã nguồn và nội dung thuộc quyền sở hữu của ứng dụng.{"\n"}
+                Người dùng không được sao chép hoặc sử dụng trái phép.{"\n\n"}
+                
+                <Text className="font-bold">7. Giới hạn trách nhiệm{"\n"}</Text>
+                Ứng dụng không chịu trách nhiệm đối với:{"\n"}
+                - Mất dữ liệu do lỗi thiết bị hoặc mạng.{"\n"}
+                - Nội dung do người dùng đăng tải.{"\n"}
+                - Thiệt hại phát sinh từ việc sử dụng trái phép tài khoản.{"\n\n"}
+                
+                <Text className="font-bold">8. Tạm ngừng hoặc chấm dứt dịch vụ{"\n"}</Text>
+                Ứng dụng có quyền:{"\n"}
+                - Tạm khóa tài khoản vi phạm.{"\n"}
+                - Ngừng cung cấp dịch vụ để bảo trì hoặc nâng cấp hệ thống.{"\n"}
+                - Chấm dứt tài khoản nếu người dùng vi phạm nghiêm trọng điều khoản.{"\n\n"}
+                
+                <Text className="font-bold">9. Thay đổi điều khoản{"\n"}</Text>
+                Điều khoản có thể được cập nhật theo thời gian. Người dùng tiếp tục sử dụng ứng dụng đồng nghĩa với việc chấp nhận các thay đổi mới.{"\n\n"}
+                
+                <Text className="font-bold">10. Liên hệ hỗ trợ{"\n"}</Text>
+                Mọi thắc mắc vui lòng liên hệ:{"\n"}
+                Email: support@chatapN7.com{"\n"}
+                Hotline: 1900 1234
+              </Text>
+            </ScrollView>
+            <View className="p-4 border-t border-gray-200">
+              <ButtonComponent
+                title="Đóng"
+                onPress={() => setShowTerms(false)}
+                variant="primary"
+                fullWidth={true}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };

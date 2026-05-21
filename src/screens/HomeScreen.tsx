@@ -247,8 +247,8 @@ const HomeScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Search Bar */}
-      <View className="bg-blue-500 px-4 py-4">
-        <View className="bg-white rounded-full px-4 py-3 flex-row items-center">
+      <View className="bg-blue-500 px-4 py-4 flex-row items-center">
+        <View className="bg-white rounded-full px-4 py-3 flex-row items-center flex-1">
           <Ionicons name="search" size={18} color="#0068FF" />
           <TextInput
             placeholder="Search conversations..."
@@ -258,6 +258,12 @@ const HomeScreen = () => {
             className="flex-1 text-sm text-gray-700 ml-3"
           />
         </View>
+        <TouchableOpacity 
+          className="ml-3"
+          onPress={() => navigation.navigate("QrScan" as never)}
+        >
+          <Ionicons name="qr-code-outline" size={28} color="white" />
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
