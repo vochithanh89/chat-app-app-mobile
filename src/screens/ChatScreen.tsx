@@ -89,6 +89,8 @@ const ZALO_BLUE = "#0068FF";
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120";
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "😡"];
 const WINDOW_WIDTH = Dimensions.get("window").width;
+const getConversationStoragePrefix = (value?: string | null) =>
+  value ? `chat:options:${value}` : null;
 
 const ChatScreen = () => {
   const route = useRoute<ChatScreenRouteProp>();
@@ -168,14 +170,24 @@ const ChatScreen = () => {
         return;
       }
 
+      const storagePrefix = getConversationStoragePrefix(convId);
+      const clearedAt = storagePrefix
+        ? await AsyncStorage.getItem(`${storagePrefix}:clearedAt`)
+        : null;
+
       const [convRes, msgRes] = await Promise.all([
         conversationAPI.getConversationById(convId),
-        messageAPI.getMessages(convId)
+        messageAPI.getMessages(convId, { limit: 100 })
       ]);
 
       const rawMessages = msgRes?.data?.messages || msgRes?.messages || [];
       const normalized = rawMessages
         .map((m: any) => normalizeMessage(m, currentUserId))
+        .filter((item: any) => {
+          if (!clearedAt) return true;
+          const rawTime = item?.rawTime ? new Date(item.rawTime).getTime() : 0;
+          return rawTime > new Date(clearedAt).getTime();
+        })
         .sort((a: any, b: any) => new Date(b.rawTime).getTime() - new Date(a.rawTime).getTime());
 
       setMessages(normalized);
@@ -252,6 +264,11 @@ const ChatScreen = () => {
         reply_to_message_id: replyingTo?.id,
         attachment_ids: attachmentIds
       });
+
+      const storagePrefix = getConversationStoragePrefix(convId);
+      if (storagePrefix) {
+        await AsyncStorage.removeItem(`${storagePrefix}:clearedAt`);
+      }
 
       setMessage("");
       setReplyingTo(null);
