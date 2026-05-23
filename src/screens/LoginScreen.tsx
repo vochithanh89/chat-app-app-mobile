@@ -80,6 +80,13 @@ const LoginScreen = () => {
           </View>
           <Text className="text-3xl font-bold text-gray-900 mb-2">Welcome Back!</Text>
           <Text className="text-gray-500 text-center">Sign in to continue to your account</Text>
+          {__DEV__ && (
+            <View className="bg-yellow-100 rounded-xl p-3 mt-4">
+              <Text className="text-sm text-yellow-900">
+                Dev account: dangvanly270704@gmail.com / password123
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Input Fields */}

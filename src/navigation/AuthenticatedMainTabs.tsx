@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/HomeScreen';
 import ContactsScreen from '../screens/ContactsScreen';
 import ChatScreen from '../screens/ChatScreen';
+import AiScreen from '../screens/AiScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
@@ -24,6 +25,8 @@ function AuthenticatedMainTabs() {
               iconName = focused ? "people" : "people-outline";
             } else if (route.name === "Call") {
               iconName = focused ? "call" : "call-outline";
+            } else if (route.name === "AI") {
+              iconName = focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline";
             } else {
               iconName = focused ? "settings" : "settings-outline";
             }
@@ -38,6 +41,8 @@ function AuthenticatedMainTabs() {
               label = "Contact";
             } else if (route.name === "Call") {
               label = "Calls";
+            } else if (route.name === "AI") {
+              label = "AI";
             } else {
               label = "Settings";
             }
@@ -51,6 +56,7 @@ function AuthenticatedMainTabs() {
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Contact" component={ContactsScreen} />
         <Tab.Screen name="Call" component={ChatScreen} />
+        <Tab.Screen name="AI" component={AiScreen} />
         <Tab.Screen name="Setting" component={SettingsScreen} />
       </Tab.Navigator>
     );

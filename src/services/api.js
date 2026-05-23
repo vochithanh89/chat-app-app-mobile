@@ -106,8 +106,8 @@ const resolveApiBaseUrl = () => {
   return "http://127.0.0.1:3333";
 };
 
-// Hardcoded to bypass Metro cache during IP change
-export const API_BASE_URL = "http://192.168.1.120:3333";
+// Hardcoded to the backend development server running on the PC
+export const API_BASE_URL = "http://192.168.1.141:62201";
 
 const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
 
@@ -133,7 +133,7 @@ const assertId = (value, label) => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -210,8 +210,11 @@ api.interceptors.response.use(
       if (refreshToken) {
         const response = await axios.post(
           `${API_BASE_URL}/api/v1/auth/refresh`,
+          {},
           {
-            refreshToken: refreshToken,
+            headers: {
+              Authorization: `Bearer ${refreshToken}`,
+            },
           },
         );
 
@@ -282,15 +285,18 @@ export const forceLogout = async () => {
 export const authAPI = {
   // Đăng nhập
   login: async (identifier, password) => {
+    const normalizedIdentifier = identifier?.trim() || ''
+    const email = normalizedIdentifier.includes('@') ? normalizedIdentifier.toLowerCase() : undefined
+
     console.log("Login request:", {
-      identifier,
+      identifier: normalizedIdentifier,
       password: "***",
       API_BASE_URL,
     });
 
     const response = await api.post("/api/v1/auth/login", {
-      email: identifier,
-      identifier,
+      email: email || normalizedIdentifier,
+      identifier: normalizedIdentifier,
       password,
       device_type: getDeviceType(),
     });
@@ -624,6 +630,26 @@ export const conversationAPI = {
       last_message_id: lastMessageId,
     });
     return response.data;
+  },
+};
+
+export const aiAPI = {
+  startConversation: async () => {
+    const response = await api.post('/api/v1/ai/conversations');
+    return getPayloadData(response);
+  },
+
+  startNewConversation: async () => {
+    const response = await api.post('/api/v1/ai/conversations/new');
+    return getPayloadData(response);
+  },
+
+  sendMessage: async (conversationId, content) => {
+    const response = await api.post('/api/v1/ai/chat', {
+      conversation_id: conversationId,
+      content,
+    });
+    return getPayloadData(response);
   },
 };
 
