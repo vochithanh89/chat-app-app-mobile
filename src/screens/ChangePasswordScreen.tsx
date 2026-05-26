@@ -69,9 +69,9 @@ const ChangePasswordScreen = () => {
 
     try {
       await changePassword({
-        oldPassword: currentPassword,
-        newPassword: newPassword,
-        confirmNewPassword: confirmPassword,
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmPassword,
       });
       
       Alert.alert(

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI } from '../services/api';
 import { socketService } from '../services/socketService';
@@ -51,6 +51,19 @@ export const AuthProvider = ({ children }) => {
         window.addEventListener('beforeunload', handleHotReload);
       }
     }
+  }, []);
+
+  // Wire up socketService force-logout callback so when server pushes
+  // auth:session_replaced or auth:force_logout, we clear React state.
+  useEffect(() => {
+    socketService.onForceLogout = () => {
+      console.warn('[AuthContext] Force logout triggered by socketService');
+      setUser(null);
+      setIsAuthenticated(false);
+    };
+    return () => {
+      socketService.onForceLogout = null;
+    };
   }, []);
 
   let isCheckingAuth = false;

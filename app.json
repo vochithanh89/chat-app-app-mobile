@@ -16,6 +16,7 @@
       "bitcode": false
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -47,6 +48,7 @@
     },
     "extra": {
       "apiBaseUrl": "http://192.168.1.31:3333"
+      "apiBaseUrl": "http://192.168.1.120:3333"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
@@ -58,6 +60,12 @@
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
         }
       ]
     ]
