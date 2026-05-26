@@ -23,8 +23,6 @@ function AuthenticatedMainTabs() {
               iconName = focused ? "home" : "home-outline";
             } else if (route.name === "Contact") {
               iconName = focused ? "people" : "people-outline";
-            } else if (route.name === "Call") {
-              iconName = focused ? "call" : "call-outline";
             } else if (route.name === "AI") {
               iconName = focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline";
             } else {
@@ -39,8 +37,6 @@ function AuthenticatedMainTabs() {
               label = "Home";
             } else if (route.name === "Contact") {
               label = "Contact";
-            } else if (route.name === "Call") {
-              label = "Calls";
             } else if (route.name === "AI") {
               label = "AI";
             } else {
@@ -55,7 +51,6 @@ function AuthenticatedMainTabs() {
       >
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Contact" component={ContactsScreen} />
-        <Tab.Screen name="Call" component={ChatScreen} />
         <Tab.Screen name="AI" component={AiScreen} />
         <Tab.Screen name="Setting" component={SettingsScreen} />
       </Tab.Navigator>

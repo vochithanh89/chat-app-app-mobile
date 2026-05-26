@@ -69,6 +69,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
   
   const peerConnectionsRef = useRef<Record<string, any>>({});
   const groupIceQueuesRef = useRef<Record<string, any[]>>({});
+  const signalQueuesRef = useRef<Record<string, Promise<void>>>({});
 
   useEffect(() => { callStateRef.current = callState; }, [callState]);
   useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
@@ -603,44 +604,51 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
          if (callStateRef.current !== 'group-connected' || activeCallRef.current?.conversationId !== conversationId) return;
          if (fromUserId === currentUser?.id) return;
          
-         const pc = initGroupPeer(fromUserId, conversationId);
-         if (!pc) return;
-         
-         // Guard: only create offer if stable
-         if (pc.signalingState !== 'stable') {
-            console.warn(`Signaling state for ${fromUserId} is ${pc.signalingState}, skipping offer`);
-            return;
-         }
+         const enqueueSignal = (peerId: string, task: () => Promise<void>) => {
+           const prev = signalQueuesRef.current[peerId] || Promise.resolve();
+           signalQueuesRef.current[peerId] = prev.then(task).catch(e => console.error(e));
+         };
 
-         try {
-           const offer = await pc.createOffer({});
-           await pc.setLocalDescription(offer);
-           socketService.emit('group-call:signal', {
-              targetUserId: fromUserId,
-              conversationId,
-              fromUserId: currentUser?.id,
-              payload: { type: 'offer', sdp: offer.sdp }
-           });
-         } catch(e: any) { 
-           console.warn("Mesh Offer Error, recreating peer:", e?.message);
-           // Destroy stale peer and retry once
-           try { pc.close(); } catch(ce) {}
-           delete peerConnectionsRef.current[fromUserId];
-           delete groupIceQueuesRef.current[fromUserId];
-           const newPc = initGroupPeer(fromUserId, conversationId);
-           if (newPc && newPc.signalingState === 'stable') {
-             try {
-               const retryOffer = await newPc.createOffer({});
-               await newPc.setLocalDescription(retryOffer);
-               socketService.emit('group-call:signal', {
-                 targetUserId: fromUserId,
-                 conversationId,
-                 fromUserId: currentUser?.id,
-                 payload: { type: 'offer', sdp: retryOffer.sdp }
-               });
-             } catch(re) { console.error("Mesh Offer Retry Failed", re); }
+         enqueueSignal(fromUserId, async () => {
+           const pc = initGroupPeer(fromUserId, conversationId);
+           if (!pc) return;
+           
+           // Guard: only create offer if stable
+           if (pc.signalingState !== 'stable') {
+              console.warn(`Signaling state for ${fromUserId} is ${pc.signalingState}, skipping offer`);
+              return;
            }
-         }
+
+           try {
+             const offer = await pc.createOffer({});
+             await pc.setLocalDescription(offer);
+             socketService.emit('group-call:signal', {
+                targetUserId: fromUserId,
+                conversationId,
+                fromUserId: currentUser?.id,
+                payload: { type: 'offer', sdp: offer.sdp }
+             });
+           } catch(e: any) { 
+             console.warn("Mesh Offer Error, recreating peer:", e?.message);
+             // Destroy stale peer and retry once
+             try { pc.close(); } catch(ce) {}
+             delete peerConnectionsRef.current[fromUserId];
+             delete groupIceQueuesRef.current[fromUserId];
+             const newPc = initGroupPeer(fromUserId, conversationId);
+             if (newPc && newPc.signalingState === 'stable') {
+               try {
+                 const retryOffer = await newPc.createOffer({});
+                 await newPc.setLocalDescription(retryOffer);
+                 socketService.emit('group-call:signal', {
+                   targetUserId: fromUserId,
+                   conversationId,
+                   fromUserId: currentUser?.id,
+                   payload: { type: 'offer', sdp: retryOffer.sdp }
+                 });
+               } catch(re) { console.error("Mesh Offer Retry Failed", re); }
+             }
+           }
+         });
       }),
       socketService.on('group-call:signal', async (payload: any) => {
          const targetUserId = payload.targetUserId || payload.to;
@@ -650,60 +658,67 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
          if (!fromUserId) return;
          if (callStateRef.current !== 'group-connected' || activeCallRef.current?.conversationId !== conversationId) return;
 
-         const pc = initGroupPeer(fromUserId, conversationId);
-         if (!pc) return;
+         const enqueueSignal = (peerId: string, task: () => Promise<void>) => {
+           const prev = signalQueuesRef.current[peerId] || Promise.resolve();
+           signalQueuesRef.current[peerId] = prev.then(task).catch(e => console.error(e));
+         };
 
-         try {
-           if (signal.type === 'offer') {
-             // Guard: only set remote offer if in correct state
-             if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
-               console.warn(`Skipping offer for ${fromUserId}: signalingState=${pc.signalingState}`);
-               return;
-             }
-             // If we already sent an offer (glare), use tiebreaker
-             if (pc.signalingState === 'have-local-offer') {
-               const iAmPolite = (currentUser?.id || '') < fromUserId;
-               if (!iAmPolite) {
-                 console.warn(`Glare detected for ${fromUserId}: ignoring offer (I am impolite)`);
+         enqueueSignal(fromUserId, async () => {
+           const pc = initGroupPeer(fromUserId, conversationId);
+           if (!pc) return;
+
+           try {
+             if (signal.type === 'offer') {
+               // Guard: only set remote offer if in correct state
+               if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
+                 console.warn(`Skipping offer for ${fromUserId}: signalingState=${pc.signalingState}`);
                  return;
                }
-               // Polite: rollback and accept their offer
-               await pc.setLocalDescription({ type: 'rollback' });
+               // If we already sent an offer (glare), use tiebreaker
+               if (pc.signalingState === 'have-local-offer') {
+                 const iAmPolite = (currentUser?.id || '') < fromUserId;
+                 if (!iAmPolite) {
+                   console.warn(`Glare detected for ${fromUserId}: ignoring offer (I am impolite)`);
+                   return;
+                 }
+                 // Polite: rollback and accept their offer
+                 await pc.setLocalDescription({ type: 'rollback' });
+               }
+               
+               await pc.setRemoteDescription(new RTCSessionDescription(signal));
+               const answer = await pc.createAnswer();
+               await pc.setLocalDescription(answer);
+               socketService.emit('group-call:signal', {
+                 targetUserId: fromUserId,
+                 conversationId,
+                 fromUserId: currentUser?.id,
+                 payload: { type: 'answer', sdp: answer.sdp }
+               });
+               let queue = groupIceQueuesRef.current[fromUserId] || [];
+               while(queue.length > 0) {
+                 try { await pc.addIceCandidate(new RTCIceCandidate(queue.shift())); } catch(e) {}
+               }
+             } else if (signal.type === 'answer') {
+               // Guard: only set answer if we're expecting one
+               if (pc.signalingState !== 'have-local-offer') {
+                 console.warn(`Skipping answer from ${fromUserId}: signalingState=${pc.signalingState}`);
+                 return;
+               }
+               await pc.setRemoteDescription(new RTCSessionDescription(signal));
+               let queue = groupIceQueuesRef.current[fromUserId] || [];
+               while(queue.length > 0) {
+                 try { await pc.addIceCandidate(new RTCIceCandidate(queue.shift())); } catch(e) {}
+               }
+             } else if (signal.type === 'ice-candidate') {
+               if (pc.remoteDescription && pc.remoteDescription.type) {
+                  try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e) {}
+               } else {
+                  groupIceQueuesRef.current[fromUserId] = groupIceQueuesRef.current[fromUserId] || [];
+                  groupIceQueuesRef.current[fromUserId].push(signal.candidate);
+               }
              }
-             
-             await pc.setRemoteDescription(new RTCSessionDescription(signal));
-             const answer = await pc.createAnswer();
-             await pc.setLocalDescription(answer);
-             socketService.emit('group-call:signal', {
-               targetUserId: fromUserId,
-               conversationId,
-               fromUserId: currentUser?.id,
-               payload: { type: 'answer', sdp: answer.sdp }
-             });
-             let queue = groupIceQueuesRef.current[fromUserId] || [];
-             while(queue.length > 0) {
-               try { await pc.addIceCandidate(new RTCIceCandidate(queue.shift())); } catch(e) {}
-             }
-           } else if (signal.type === 'answer') {
-             // Guard: only set answer if we're expecting one
-             if (pc.signalingState !== 'have-local-offer') {
-               console.warn(`Skipping answer from ${fromUserId}: signalingState=${pc.signalingState}`);
-               return;
-             }
-             await pc.setRemoteDescription(new RTCSessionDescription(signal));
-             let queue = groupIceQueuesRef.current[fromUserId] || [];
-             while(queue.length > 0) {
-               try { await pc.addIceCandidate(new RTCIceCandidate(queue.shift())); } catch(e) {}
-             }
-           } else if (signal.type === 'ice-candidate') {
-             if (pc.remoteDescription && pc.remoteDescription.type) {
-                try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e) {}
-             } else {
-                groupIceQueuesRef.current[fromUserId] = groupIceQueuesRef.current[fromUserId] || [];
-                groupIceQueuesRef.current[fromUserId].push(signal.candidate);
-             }
-           }
-         } catch(e) { console.error("Signal specific error", e); }
+           } catch(e) { console.error("Signal specific error", e); }
+         });
       }),
       socketService.on('group-call:leave', (payload: any) => {
          const { fromUserId } = payload;

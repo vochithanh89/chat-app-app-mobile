@@ -201,6 +201,7 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
     videoAttachments: attachments.filter((attachment: any) => attachment.type === "video"),
     fileAttachments: attachments.filter((attachment: any) => attachment.type === "file"),
     reactions: Object.values(groupedReactions),
+    poll: message?.poll ?? null,
   };
 };
 

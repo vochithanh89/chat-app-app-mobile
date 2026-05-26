@@ -8,7 +8,6 @@ import ContactsScreen from "../screens/ContactsScreen";
 import ChatScreen from "../screens/ChatScreen";
 import ChatOptionsScreen from "../screens/ChatOptionsScreen";
 import ProfileScreen from "../screens/ProfileScreen";
-import CallsScreen from "../screens/CallsScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";

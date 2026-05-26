@@ -26,7 +26,7 @@ const RTCVideoView = ({ stream: _stream, streamURL: _streamURL, objectFit: _obje
     return <View style={style} />;
   }
 
-  return <NativeRTCView style={style} objectFit={_objectFit} zOrder={_zOrder} {...props} />;
+  return <NativeRTCView streamURL={_streamURL} style={style} objectFit={_objectFit} zOrder={_zOrder} {...props} />;
 };
 
 export default RTCVideoView;

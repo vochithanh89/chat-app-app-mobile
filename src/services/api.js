@@ -106,8 +106,7 @@ const resolveApiBaseUrl = () => {
   return "http://127.0.0.1:3333";
 };
 
-// Hardcoded to the backend development server running on the PC
-export const API_BASE_URL = "http://192.168.1.141:62201";
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
 
@@ -693,14 +692,27 @@ export const messageAPI = {
       });
     }
 
-    const config = {
+    const token = await tokenStorage.getItem("accessToken");
+    const response = await fetch(`${API_BASE_URL}/api/v1/messages/upload`, {
+      method: "POST",
       headers: {
         Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-    };
+      body: formData,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
 
-    const response = await api.post("/api/v1/messages/upload", formData, config);
-    return response.data;
+    if (!response.ok) {
+      const error = new Error(data?.message || data || "Failed to upload attachment");
+      error.response = { status: response.status, data };
+      throw error;
+    }
+
+    return data;
   },
 
   recallMessage: async (messageId) => {

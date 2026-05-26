@@ -63,6 +63,9 @@ import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromCon
 import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
 import { useCall } from "../contexts/CallContext";
+import { socketService } from "../services/socketService";
+import PollBubble from "../components/PollBubble";
+import CreatePollModal from "../components/CreatePollModal";
 
 /** --- TYPES --- **/
 type RootStackParamList = {
@@ -129,6 +132,7 @@ const ChatScreen = () => {
   const [forwarding, setForwarding] = useState(false);
   const [viewingImageUri, setViewingImageUri] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showCreatePoll, setShowCreatePoll] = useState(false);
 
   // Hide tab bar on mount
   useTabBarVisibility(true);
@@ -207,8 +211,37 @@ const ChatScreen = () => {
     useCallback(() => {
       loadData();
       const interval = setInterval(loadData, 5000); // Polling 5s
-      return () => clearInterval(interval);
-    }, [loadData])
+
+      // Listen for poll:updated socket events
+      const unsubPollUpdated = socketService.on('poll:updated', (pollData: any) => {
+        if (!pollData?.id) return;
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.poll && msg.poll.id === pollData.id) {
+              return { ...msg, poll: pollData };
+            }
+            return msg;
+          })
+        );
+      });
+
+      // Listen for message:new with poll data
+      const unsubNewMessage = socketService.on('message:new', (msgData: any) => {
+        if (!msgData?.id) return;
+        const normalized = normalizeMessage(msgData, currentUserId);
+        setMessages((prev) => {
+          // Avoid duplicate
+          if (prev.some((m) => m.id === normalized.id)) return prev;
+          return [normalized, ...prev];
+        });
+      });
+
+      return () => {
+        clearInterval(interval);
+        unsubPollUpdated();
+        unsubNewMessage();
+      };
+    }, [loadData, currentUserId])
   );
 
   useFocusEffect(
@@ -300,6 +333,30 @@ const ChatScreen = () => {
         file: (a as any).file || null
       }));
       setPendingAttachments(prev => [...prev, ...newAssets]);
+    }
+    setShowAttachmentPicker(false);
+  };
+
+  const pickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true
+      });
+      if (!result.canceled && result.assets) {
+        const newAssets: PendingAttachment[] = result.assets.map(a => ({
+          id: Math.random().toString(),
+          uri: a.uri,
+          name: a.name || "document.pdf",
+          mimeType: a.mimeType || "application/octet-stream",
+          type: "file",
+          size: a.size,
+          file: (a as any).file || null
+        }));
+        setPendingAttachments(prev => [...prev, ...newAssets]);
+      }
+    } catch (err) {
+      console.log("DocumentPicker error:", err);
     }
     setShowAttachmentPicker(false);
   };
@@ -409,6 +466,7 @@ const ChatScreen = () => {
     const isGroup = conversation?.isGroup || conversation?.type === 'group';
     const senderName = item.sender?.name || 'Người dùng';
     const senderAvatar = item.sender?.avatar || item.sender?.avatarUrl || FALLBACK_AVATAR;
+    const hasPoll = !!item.poll;
 
     return (
       <View style={[styles.messageContainer, isMine ? styles.mineAlign : styles.otherAlign]}>
@@ -427,104 +485,126 @@ const ChatScreen = () => {
           delayLongPress={500}
           activeOpacity={0.8}
         >
-          <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther, isGroup && !isMine && { marginLeft: 36 }]}>
-            {/* Reply Preview inside bubble */}
-            {item.replyToMessageId && (
-              <View style={styles.replyInBubble}>
-                <Text style={styles.replyText} numberOfLines={1}>
-                  {messageById[item.replyToMessageId]?.content || "Đang trả lời tin nhắn..."}
-                </Text>
+          {hasPoll ? (
+            /* ── Poll message: render PollBubble directly, no bubble wrapper ── */
+            <View style={[isGroup && !isMine && { marginLeft: 36 }]}>
+              <PollBubble
+                poll={item.poll}
+                isMine={isMine}
+                currentUserId={currentUserId}
+                onUpdated={(updatedPoll: any) => {
+                  setMessages((prev: any[]) =>
+                    prev.map((msg: any) =>
+                      msg.id === item.id ? { ...msg, poll: updatedPoll } : msg
+                    )
+                  );
+                }}
+              />
+              <View style={styles.messageFooter}>
+                <Text style={[styles.timeText, { color: "#AAA" }]}>{item.time}</Text>
               </View>
-            )}
+            </View>
+          ) : (
+            /* ── Normal message: regular bubble ── */
+            <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther, isGroup && !isMine && { marginLeft: 36 }]}>
+              {/* Reply Preview inside bubble */}
+              {item.replyToMessageId && (
+                <View style={styles.replyInBubble}>
+                  <Text style={styles.replyText} numberOfLines={1}>
+                    {messageById[item.replyToMessageId]?.content || "Đang trả lời tin nhắn..."}
+                  </Text>
+                </View>
+              )}
 
-            {/* Image Attachments */}
-            {item.imageAttachments?.length > 0 && (
-              <View style={styles.messageImagesContainer}>
-                {item.imageAttachments.map((img: any) => (
-                  <TouchableOpacity key={img.id} onPress={() => setViewingImageUri(img.url)}>
-                    <Image
-                      source={{ uri: img.url }}
-                      style={styles.messageImage}
-                      resizeMode="cover"
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+              {/* Image Attachments */}
+              {item.imageAttachments?.length > 0 && (
+                <View style={styles.messageImagesContainer}>
+                  {item.imageAttachments.map((img: any) => (
+                    <TouchableOpacity key={img.id} onPress={() => setViewingImageUri(img.url)}>
+                      <Image
+                        source={{ uri: img.url }}
+                        style={styles.messageImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            {/* Video Attachments */}
-            {item.videoAttachments?.length > 0 && (
-              <View style={styles.messageImagesContainer}>
-                {item.videoAttachments.map((vid: any) => (
-                  <VideoAttachment key={vid.id} uri={vid.url} />
-                ))}
-              </View>
-            )}
+              {/* Video Attachments */}
+              {item.videoAttachments?.length > 0 && (
+                <View style={styles.messageImagesContainer}>
+                  {item.videoAttachments.map((vid: any) => (
+                    <VideoAttachment key={vid.id} uri={vid.url} />
+                  ))}
+                </View>
+              )}
 
-            {/* File Attachments */}
-            {item.fileAttachments?.length > 0 && (
-              <View style={styles.messageImagesContainer}>
-                {item.fileAttachments.map((file: any) => (
-                  <TouchableOpacity key={file.id} style={styles.messageFile} onPress={() => Linking.openURL(file.url)}>
-                    <Ionicons name="document" size={20} color={isMine ? "white" : ZALO_BLUE} />
-                    <Text style={[styles.messageFileText, isMine ? styles.textWhite : styles.textBlack]} numberOfLines={1}>
-                      {file.fileName || "File"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {(() => {
-              const content = item.content || item.text || "";
-              
-              // Handle active call start message
-              if (content.includes("[GROUP_CALL:STARTED]")) {
-                const isActive = !!ongoingGroupCalls[conversation?.id];
-                return (
-                  <View style={styles.callMessageContainer}>
-                    <View style={styles.callMessageHeader}>
-                      <View style={[styles.callIconBox, { backgroundColor: isActive ? "#4CD964" : "#9CA3AF" }]}>
-                        <Ionicons name="videocam" size={20} color="white" />
-                      </View>
-                      <Text style={[styles.callMessageTitle, { color: isMine ? "white" : "#333" }]}>
-                        {isActive ? "Cuộc họp đang diễn ra" : "Cuộc họp nhóm đã bắt đầu"}
-                      </Text>
-                    </View>
-                    <TouchableOpacity 
-                      style={[styles.callJoinButton, { backgroundColor: isMine ? "white" : "#0068FF" }]}
-                      onPress={() => joinGroupCall(conversation?.id, 'video')}
-                    >
-                      <Text style={[styles.callJoinButtonText, { color: isMine ? "#0068FF" : "white" }]}>
-                        {isActive ? "Tham gia ngay" : "Tham gia cuộc họp"}
+              {/* File Attachments */}
+              {item.fileAttachments?.length > 0 && (
+                <View style={styles.messageImagesContainer}>
+                  {item.fileAttachments.map((file: any) => (
+                    <TouchableOpacity key={file.id} style={styles.messageFile} onPress={() => Linking.openURL(file.url)}>
+                      <Ionicons name="document" size={20} color={isMine ? "white" : ZALO_BLUE} />
+                      <Text style={[styles.messageFileText, isMine ? styles.textWhite : styles.textBlack]} numberOfLines={1}>
+                        {file.fileName || "File"}
                       </Text>
                     </TouchableOpacity>
-                  </View>
-                );
-              }
+                  ))}
+                </View>
+              )}
 
-              // Handle call ended message
-              if (content.includes("Cuộc gọi nhóm kết thúc")) {
+              {(() => {
+                const content = item.content || item.text || "";
+                
+                // Handle active call start message
+                if (content.includes("[GROUP_CALL:STARTED]")) {
+                  const isActive = !!ongoingGroupCalls[conversation?.id];
+                  return (
+                    <View style={styles.callMessageContainer}>
+                      <View style={styles.callMessageHeader}>
+                        <View style={[styles.callIconBox, { backgroundColor: isActive ? "#4CD964" : "#9CA3AF" }]}>
+                          <Ionicons name="videocam" size={20} color="white" />
+                        </View>
+                        <Text style={[styles.callMessageTitle, { color: isMine ? "white" : "#333" }]}>
+                          {isActive ? "Cuộc họp đang diễn ra" : "Cuộc họp nhóm đã bắt đầu"}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={[styles.callJoinButton, { backgroundColor: isMine ? "white" : "#0068FF" }]}
+                        onPress={() => joinGroupCall(conversation?.id, 'video')}
+                      >
+                        <Text style={[styles.callJoinButtonText, { color: isMine ? "#0068FF" : "white" }]}>
+                          {isActive ? "Tham gia ngay" : "Tham gia cuộc họp"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+
+                // Handle call ended message
+                if (content.includes("Cuộc gọi nhóm kết thúc")) {
+                  return (
+                    <View style={styles.callEndContainer}>
+                      <Ionicons name="call" size={16} color={isMine ? "#E0E0E0" : "#666"} style={{ marginRight: 8 }} />
+                      <Text style={[styles.callEndText, { color: isMine ? "#E0E0E0" : "#666" }]}>{content}</Text>
+                    </View>
+                  );
+                }
+
                 return (
-                  <View style={styles.callEndContainer}>
-                    <Ionicons name="call" size={16} color={isMine ? "#E0E0E0" : "#666"} style={{ marginRight: 8 }} />
-                    <Text style={[styles.callEndText, { color: isMine ? "#E0E0E0" : "#666" }]}>{content}</Text>
-                  </View>
+                  <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
+                    {content}
+                  </Text>
                 );
-              }
+              })()}
 
-              return (
-                <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
-                  {content}
-                </Text>
-              );
-            })()}
-
-            <View style={styles.messageFooter}>
-              <Text style={[styles.timeText, isMine ? {color: "#E0E0E0"} : {color: "#AAA"}]}>{item.time}</Text>
-              {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
+              <View style={styles.messageFooter}>
+                <Text style={[styles.timeText, isMine ? {color: "#E0E0E0"} : {color: "#AAA"}]}>{item.time}</Text>
+                {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
+              </View>
             </View>
-          </View>
+          )}
         </TouchableOpacity>
 
         {/* Reactions Row */}
@@ -661,6 +741,11 @@ const ChatScreen = () => {
             <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
               <Ionicons name="add-circle-outline" size={28} color="#666" />
             </TouchableOpacity>
+            {(conversation?.isGroup || conversation?.type === 'group') && (
+              <TouchableOpacity onPress={() => setShowCreatePoll(true)} style={{ marginLeft: 4 }}>
+                <Ionicons name="bar-chart-outline" size={22} color="#7C3AED" />
+              </TouchableOpacity>
+            )}
             <TextInput
               style={styles.input}
               placeholder="Tin nhắn"
@@ -793,7 +878,7 @@ const ChatScreen = () => {
               <Ionicons name="image" size={30} color="#4CD964" />
               <Text>Ảnh</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.attachBtn}>
+            <TouchableOpacity style={styles.attachBtn} onPress={pickDocument}>
               <Ionicons name="document" size={30} color="#FF9500" />
               <Text>Tài liệu</Text>
             </TouchableOpacity>
@@ -845,6 +930,14 @@ const ChatScreen = () => {
           )}
         </View>
       </Modal>
+
+      {/* Create Poll Modal */}
+      <CreatePollModal
+        visible={showCreatePoll}
+        onClose={() => setShowCreatePoll(false)}
+        conversationId={conversationId || conversation?.id || routeConversationId || ''}
+        onCreated={() => loadData()}
+      />
     </SafeAreaView>
   );
 };
