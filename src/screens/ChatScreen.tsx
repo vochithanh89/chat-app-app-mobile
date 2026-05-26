@@ -88,6 +88,7 @@ interface PendingAttachment {
 const ZALO_BLUE = "#0068FF";
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120";
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "😡"];
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡", "🙏", "🎉"];
 const WINDOW_WIDTH = Dimensions.get("window").width;
 const getConversationStoragePrefix = (value?: string | null) =>
   value ? `chat:options:${value}` : null;
@@ -127,6 +128,7 @@ const ChatScreen = () => {
   const [forwardLoading, setForwardLoading] = useState(false);
   const [forwarding, setForwarding] = useState(false);
   const [viewingImageUri, setViewingImageUri] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   // Hide tab bar on mount
   useTabBarVisibility(true);
@@ -519,7 +521,7 @@ const ChatScreen = () => {
             })()}
 
             <View style={styles.messageFooter}>
-              <Text style={styles.timeText}>{item.time}</Text>
+              <Text style={[styles.timeText, isMine ? {color: "#E0E0E0"} : {color: "#AAA"}]}>{item.time}</Text>
               {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
             </View>
           </View>
@@ -607,8 +609,8 @@ const ChatScreen = () => {
 
       {/* Message List */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1 }}
       >
         {loading ? (
@@ -671,7 +673,9 @@ const ChatScreen = () => {
                 <Ionicons name="send" size={24} color={ZALO_BLUE} />
               </TouchableOpacity>
             ) : (
-              <Ionicons name="happy-outline" size={26} color="#666" />
+              <TouchableOpacity onPress={() => setShowEmojiPicker(true)}>
+                <Ionicons name="happy-outline" size={26} color="#666" />
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -793,6 +797,32 @@ const ChatScreen = () => {
               <Ionicons name="document" size={30} color="#FF9500" />
               <Text>Tài liệu</Text>
             </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Quick Emoji Picker Modal */}
+      <Modal visible={showEmojiPicker} transparent animationType="slide">
+        <Pressable style={styles.overlay} onPress={() => setShowEmojiPicker(false)}>
+          <View style={styles.emojiSheet}>
+            {QUICK_EMOJIS.map(emoji => (
+              <TouchableOpacity 
+                key={emoji} 
+                style={styles.quickEmojiBtn}
+                onPress={async () => {
+                  setShowEmojiPicker(false);
+                  try {
+                    const convId = conversationId || conversation?.id || routeConversationId || routeUser?.conversationId;
+                    if (convId) {
+                      await messageAPI.sendMessage(convId, { content: emoji });
+                      loadData();
+                    }
+                  } catch(e) {}
+                }}
+              >
+                <Text style={styles.quickEmojiText}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </Pressable>
       </Modal>
@@ -948,6 +978,10 @@ const styles = StyleSheet.create({
 
   attachmentSheet: { width: "100%", backgroundColor: "white", position: "absolute", bottom: 0, padding: 20, flexDirection: "row", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   attachBtn: { alignItems: "center", marginRight: 30 },
+  
+  emojiSheet: { width: "100%", backgroundColor: "white", position: "absolute", bottom: 0, padding: 20, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-around", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  quickEmojiBtn: { padding: 15 },
+  quickEmojiText: { fontSize: 32 },
   activeCallBanner: {
     flexDirection: 'row',
     alignItems: 'center',
