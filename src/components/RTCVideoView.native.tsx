@@ -1,5 +1,7 @@
 import React from "react";
-import { RTCView } from "react-native-webrtc";
+import { View } from "react-native";
+
+declare const require: any;
 
 type Props = {
   stream?: any;
@@ -9,6 +11,22 @@ type Props = {
   zOrder?: number;
 };
 
-const RTCVideoView = ({ stream: _stream, ...props }: Props) => <RTCView {...props} />;
+const loadRTCView = () => {
+  try {
+    return require("react-native-webrtc").RTCView;
+  } catch {
+    return null;
+  }
+};
+
+const NativeRTCView = loadRTCView();
+
+const RTCVideoView = ({ stream: _stream, streamURL: _streamURL, objectFit: _objectFit, zOrder: _zOrder, style, ...props }: Props) => {
+  if (!NativeRTCView) {
+    return <View style={style} />;
+  }
+
+  return <NativeRTCView style={style} objectFit={_objectFit} zOrder={_zOrder} {...props} />;
+};
 
 export default RTCVideoView;

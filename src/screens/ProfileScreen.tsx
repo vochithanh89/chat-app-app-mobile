@@ -16,7 +16,7 @@ import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../contexts/AuthContext";
-import { friendshipAPI } from "../services/api";
+import { friendshipAPI, userAPI } from "../services/api";
 import { formatImageUrl, normalizeUser } from "../services/chatMappers";
 import { getExtraLargeAvatar } from "../utils/avatarUtils";
 
@@ -34,7 +34,15 @@ const getResponseMessage = (error: any, fallback: string) =>
   error?.response?.data?.message || error?.message || fallback;
 
 const getFieldErrors = (error: any): FieldErrors =>
-  error?.response?.data?.errors || error?.response?.data?.fieldErrors || {};
+  Array.isArray(error?.response?.data?.errors)
+    ? error.response.data.errors.reduce((acc: FieldErrors, item: any) => {
+        if (item?.field) acc[item.field] = item.message || "";
+        return acc;
+      }, {})
+    : error?.response?.data?.errors || error?.response?.data?.fieldErrors || {};
+
+const getResponseData = (response: any) =>
+  response?.data?.user || response?.data?.data?.user || response?.data?.data || response?.user || response;
 
 const getInitials = (name?: string) =>
   (name || "User")
@@ -93,19 +101,41 @@ const ProfileScreen = () => {
 
   useEffect(() => {
     if (isPublicProfile) return;
-    if (!authUser) {
-      checkAuthStatus?.();
-      return;
-    }
+    let active = true;
 
-    setFormData({
-      name: authUser.name || authUser.fullName || "",
-      email: authUser.email || "",
-      phone: authUser.phone || authUser.phoneNumber || "",
-      bio: authUser.bio || "",
-    });
-    setAvatarPreviewUri(null);
-    setLoadingProfile(false);
+    const applyProfile = (profile: any) => {
+      if (!active || !profile) return;
+      setFormData({
+        name: profile.name || profile.fullName || "",
+        email: profile.email || "",
+        phone: profile.phone || profile.phoneNumber || "",
+        bio: profile.bio || "",
+      });
+      setAvatarPreviewUri(null);
+      setLoadingProfile(false);
+    };
+
+    const loadProfile = async () => {
+      if (authUser) {
+        applyProfile(authUser);
+      }
+
+      try {
+        const response = await userAPI.getProfile();
+        applyProfile(getResponseData(response));
+      } catch {
+        if (!authUser) {
+          checkAuthStatus?.();
+        }
+      } finally {
+        if (active) setLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+    return () => {
+      active = false;
+    };
   }, [authUser, checkAuthStatus, isPublicProfile]);
 
   const isAlreadyFriend =
@@ -420,7 +450,7 @@ const ProfileScreen = () => {
             </TouchableOpacity>
             <View>
               <Text className="text-xl font-semibold text-gray-900">Profile Settings</Text>
-              <Text className="text-sm text-gray-500">Manage your account settings</Text>
+              <Text className="text-sm text-gray-500">Manage your account settings and preferences</Text>
             </View>
           </View>
         </View>
@@ -456,8 +486,8 @@ const ProfileScreen = () => {
             </View>
 
             <View className="mt-5 pt-4 border-t border-gray-100 flex-row items-center">
-              <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-              <Text className="text-xs text-gray-500">Online</Text>
+              <View className={`w-2 h-2 rounded-full mr-2 ${authUser?.isOnline === false ? "bg-gray-400" : "bg-green-500"}`} />
+              <Text className="text-xs text-gray-500">{authUser?.isOnline === false ? "Offline" : "Online"}</Text>
             </View>
           </View>
 

@@ -676,6 +676,8 @@ export const messageAPI = {
     if (Platform.OS === "web") {
       if (file.file instanceof File) {
         formData.append("file", file.file, fileName);
+      } else if (file.file instanceof Blob) {
+        formData.append("file", file.file, fileName);
       } else if (file.uri) {
         const blobResponse = await fetch(file.uri);
         const blob = await blobResponse.blob();
@@ -691,12 +693,11 @@ export const messageAPI = {
       });
     }
 
-    const config = {};
-    if (Platform.OS !== "web") {
-      config.headers = {
-        "Content-Type": "multipart/form-data",
-      };
-    }
+    const config = {
+      headers: {
+        Accept: "application/json",
+      },
+    };
 
     const response = await api.post("/api/v1/messages/upload", formData, config);
     return response.data;
