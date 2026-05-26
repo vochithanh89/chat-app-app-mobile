@@ -268,7 +268,7 @@ export const normalizeConversation = (
           "Chưa có tin nhắn"),
     time: formatTimeLabel(latestMessageTime),
     rawTime: latestMessageTime,
-    unread: conversation?.unread_count || conversation?.unread || 0,
+    unread: conversation?.unreadCount ?? conversation?.unread_count ?? conversation?.unread ?? 0,
     online: Boolean(otherMember?.isOnline),
     isOnline: Boolean(otherMember?.isOnline),
     commentsRestricted: Boolean(

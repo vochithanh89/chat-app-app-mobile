@@ -217,6 +217,10 @@ const ChatScreen = () => {
       if (convRes?.data?.conversation) {
         setConversation(normalizeConversation(convRes.data.conversation, currentUserId));
       }
+      
+      if (normalized.length > 0) {
+        conversationAPI.markRead(convId, normalized[0].id).catch(() => {});
+      }
     } catch (error) {
       console.error("Load Chat Error:", error);
     } finally {
@@ -265,6 +269,11 @@ const ChatScreen = () => {
           if (prev.some((m) => m.id === normalized.id)) return prev;
           return [normalized, ...prev];
         });
+
+        const convId = conversation?.id || conversationId || routeConversationId || routeUser?.conversationId;
+        if (convId) {
+          conversationAPI.markRead(convId, normalized.id).catch(() => {});
+        }
       });
 
       // Listen for message recall

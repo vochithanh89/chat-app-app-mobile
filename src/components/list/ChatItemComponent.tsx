@@ -45,10 +45,15 @@ const ChatItemComponent: React.FC<ChatItemProps> = ({
 
       <View className="flex-1">
         <View className="flex-row justify-between items-center mb-1">
-          <Text className="font-semibold text-base text-gray-900 flex-1" numberOfLines={1}>
+          <Text 
+            className={`text-base flex-1 ${
+              item.unread && item.unread > 0 ? "font-bold text-black" : "font-semibold text-gray-900"
+            }`} 
+            numberOfLines={1}
+          >
             {item.name}
           </Text>
-          <Text className="text-xs text-gray-500 ml-2">
+          <Text className={`text-xs ml-2 ${item.unread && item.unread > 0 ? "text-blue-500 font-semibold" : "text-gray-400"}`}>
             {item.time}
           </Text>
         </View>
@@ -60,7 +65,13 @@ const ChatItemComponent: React.FC<ChatItemProps> = ({
           <Text
             numberOfLines={1}
             className={`text-sm flex-1 ${
-              item.typing ? "text-blue-500 italic" : item.missed ? "text-red-500" : "text-gray-600"
+              item.typing 
+                ? "text-blue-500 italic font-medium" 
+                : item.missed 
+                ? "text-red-500 font-medium" 
+                : item.unread && item.unread > 0 
+                ? "text-gray-900 font-semibold" 
+                : "text-gray-500"
             }`}
           >
             {item.typing ? "Đang nhập..." : item.lastMsg}

@@ -674,27 +674,11 @@ export const conversationAPI = {
 
   // POST /api/v1/conversations/:id/read - Đánh dấu đã đọc
   markAsRead: async (conversationId) => {
-    try {
-      const storedPrivate = await AsyncStorage.getItem("settings:private");
-      if (storedPrivate === "true") {
-        return { success: true, message: "Privacy mode active, markAsRead skipped" };
-      }
-    } catch (e) {
-      console.warn("Lỗi đọc settings:private trong markAsRead:", e);
-    }
     const response = await api.post(`/api/v1/conversations/${conversationId}/read`);
     return response.data;
   },
   
   markRead: async (conversationId, lastMessageId = null) => {
-    try {
-      const storedPrivate = await AsyncStorage.getItem("settings:private");
-      if (storedPrivate === "true") {
-        return { success: true, message: "Privacy mode active, markRead skipped" };
-      }
-    } catch (e) {
-      console.warn("Lỗi đọc settings:private trong markRead:", e);
-    }
     const response = await api.post(`/api/v1/conversations/${conversationId}/read`, {
       last_message_id: lastMessageId,
     });

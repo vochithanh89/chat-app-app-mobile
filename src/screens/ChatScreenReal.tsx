@@ -201,7 +201,7 @@ const ChatScreenReal = () => {
       setMessages(normalizedMessages);
 
       if (normalizedMessages.length > 0) {
-        const latest = normalizedMessages[normalizedMessages.length - 1];
+        const latest = normalizedMessages[0];
         conversationAPI.markRead(resolvedConversationId, latest.id).catch(() => {});
       }
 
