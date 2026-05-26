@@ -26,12 +26,20 @@ class SocketService {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) return;
 
+      const storedPrivate = await AsyncStorage.getItem('settings:private');
+      const isPrivate = storedPrivate === 'true';
+
       this.socket = io(API_BASE_URL, {
-        auth: { token, device_type: getDeviceType() },
+        auth: { 
+          token, 
+          device_type: getDeviceType(),
+          is_private: isPrivate,
+        },
         transports: ['websocket'],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
       });
 
       this.socket.on('connect', () => {

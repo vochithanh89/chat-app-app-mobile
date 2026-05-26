@@ -16,6 +16,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Vibration,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -96,9 +97,12 @@ const WINDOW_WIDTH = Dimensions.get("window").width;
 const getConversationStoragePrefix = (value?: string | null) =>
   value ? `chat:options:${value}` : null;
 
+import { useTheme } from "../contexts/ThemeContext";
+
 const ChatScreen = () => {
   const route = useRoute<ChatScreenRouteProp>();
   const navigation = useNavigation<ChatScreenNavigationProp>();
+  const { isDarkMode, colors } = useTheme();
   const { user: authUser } = useAuth();
   const insets = useSafeAreaInsets();
   const currentUserId = authUser?.uuid || authUser?.id || null;
@@ -136,6 +140,19 @@ const ChatScreen = () => {
 
   // Hide tab bar on mount
   useTabBarVisibility(true);
+
+  const currentUserRole = useMemo(() => {
+    if (!conversation?.members || !currentUserId) return 'member';
+    const member = conversation.members.find((m: any) => {
+      const memberId = m.user?.uuid || m.user?.id || m.userId || m.id;
+      return memberId && String(memberId) === String(currentUserId);
+    });
+    return member?.role || 'member';
+  }, [conversation?.members, currentUserId]);
+
+  const isGroup = conversation?.isGroup || conversation?.type === 'group';
+  const commentsRestricted = conversation?.commentsRestricted;
+  const canComment = !isGroup || !commentsRestricted || currentUserRole === 'owner' || currentUserRole === 'admin';
 
   /** --- LOGIC XỬ LÝ DỮ LIỆU --- **/
 
@@ -226,9 +243,23 @@ const ChatScreen = () => {
       });
 
       // Listen for message:new with poll data
-      const unsubNewMessage = socketService.on('message:new', (msgData: any) => {
+      const unsubNewMessage = socketService.on('message:new', async (msgData: any) => {
         if (!msgData?.id) return;
         const normalized = normalizeMessage(msgData, currentUserId);
+        
+        // Trigger notification vibration if notifications are enabled and message is from another user
+        try {
+          const storedNotif = await AsyncStorage.getItem("settings:notification");
+          if (storedNotif !== "false") {
+            const senderId = msgData?.sender_id || msgData?.sender?.id || msgData?.sender?.uuid || null;
+            if (senderId && String(senderId) !== String(currentUserId)) {
+              Vibration.vibrate(500);
+            }
+          }
+        } catch (error) {
+          console.error("Lỗi rung trong ChatScreen:", error);
+        }
+
         setMessages((prev) => {
           // Avoid duplicate
           if (prev.some((m) => m.id === normalized.id)) return prev;
@@ -236,10 +267,34 @@ const ChatScreen = () => {
         });
       });
 
+      // Listen for message recall
+      const unsubRecalled = socketService.on('message:recalled', () => {
+        loadData();
+      });
+
+      // Listen for reaction add
+      const unsubReactionAdded = socketService.on('message:reaction:added', () => {
+        loadData();
+      });
+
+      // Listen for reaction remove
+      const unsubReactionRemoved = socketService.on('message:reaction:removed', () => {
+        loadData();
+      });
+
+      // Listen for group settings / members change
+      const unsubMembersChanged = socketService.on('conversation:members-changed', () => {
+        loadData();
+      });
+
       return () => {
         clearInterval(interval);
         unsubPollUpdated();
         unsubNewMessage();
+        unsubRecalled();
+        unsubReactionAdded();
+        unsubReactionRemoved();
+        unsubMembersChanged();
       };
     }, [loadData, currentUserId])
   );
@@ -282,7 +337,7 @@ const ChatScreen = () => {
       setSending(true);
       const convId = await resolveConversationId();
       if (!convId) {
-        Alert.alert("Lá»—i", "KhÃ´ng thá»ƒ má»Ÿ cuá»™c trÃ² chuyá»‡n");
+        Alert.alert("Lỗi", "Không thể mở cuộc trò chuyện");
         return;
       }
 
@@ -380,7 +435,7 @@ const ChatScreen = () => {
       setForwardConversations(normalized);
     } catch (error) {
       console.log("Load forward conversations error:", error);
-      Alert.alert("Error", "Failed to load conversations for forwarding");
+      Alert.alert("Lỗi", "Không thể tải các cuộc trò chuyện để chuyển tiếp");
       setShowForwardModal(false);
     } finally {
       setForwardLoading(false);
@@ -407,10 +462,10 @@ const ChatScreen = () => {
       setShowForwardModal(false);
       setSelectedForwardTargets([]);
       setSelectedMessage(null);
-      Alert.alert("Success", "Message forwarded successfully");
+      Alert.alert("Thành công", "Đã chuyển tiếp tin nhắn thành công");
     } catch (error) {
       console.log("Forward message error:", error);
-      Alert.alert("Error", "Failed to forward message");
+      Alert.alert("Lỗi", "Không thể chuyển tiếp tin nhắn");
     } finally {
       setForwarding(false);
     }
@@ -429,7 +484,7 @@ const ChatScreen = () => {
       await loadData();
     } catch (error) {
       console.log("Delete message error:", error);
-      Alert.alert("Error", "Failed to delete message");
+      Alert.alert("Lỗi", "Không thể xóa tin nhắn");
     }
   };
 
@@ -455,7 +510,7 @@ const ChatScreen = () => {
       await loadData();
     } catch (error) {
       console.log("Toggle reaction error:", error);
-      Alert.alert("Error", "Failed to update reaction");
+      Alert.alert("Lỗi", "Không thể cập nhật biểu cảm");
     }
   };
 
@@ -470,13 +525,12 @@ const ChatScreen = () => {
 
     return (
       <View style={[styles.messageContainer, isMine ? styles.mineAlign : styles.otherAlign]}>
-        {/* Show sender avatar in group for other people's messages */}
-        {isGroup && !isMine && (
+        {isGroup && !isMine ? (
           <View style={styles.groupSenderRow}>
             <Image source={{ uri: senderAvatar }} style={styles.groupSenderAvatar} />
             <Text style={styles.groupSenderName} numberOfLines={1}>{senderName}</Text>
           </View>
-        )}
+        ) : null}
         <TouchableOpacity
           onLongPress={() => {
             setSelectedMessage(item);
@@ -486,8 +540,7 @@ const ChatScreen = () => {
           activeOpacity={0.8}
         >
           {hasPoll ? (
-            /* ── Poll message: render PollBubble directly, no bubble wrapper ── */
-            <View style={[isGroup && !isMine && { marginLeft: 36 }]}>
+            <View style={isGroup && !isMine ? { marginLeft: 36 } : undefined}>
               <PollBubble
                 poll={item.poll}
                 isMine={isMine}
@@ -505,19 +558,21 @@ const ChatScreen = () => {
               </View>
             </View>
           ) : (
-            /* ── Normal message: regular bubble ── */
-            <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther, isGroup && !isMine && { marginLeft: 36 }]}>
-              {/* Reply Preview inside bubble */}
-              {item.replyToMessageId && (
+            <View style={[
+              styles.bubble,
+              isMine ? styles.bubbleMine : styles.bubbleOther,
+              !isMine && isDarkMode ? { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 } : null,
+              isGroup && !isMine ? { marginLeft: 36 } : undefined
+            ]}>
+              {item.replyToMessageId ? (
                 <View style={styles.replyInBubble}>
-                  <Text style={styles.replyText} numberOfLines={1}>
+                  <Text style={[styles.replyText, isDarkMode ? { color: colors.textSecondary } : null]} numberOfLines={1}>
                     {messageById[item.replyToMessageId]?.content || "Đang trả lời tin nhắn..."}
                   </Text>
                 </View>
-              )}
+              ) : null}
 
-              {/* Image Attachments */}
-              {item.imageAttachments?.length > 0 && (
+              {item.imageAttachments && item.imageAttachments.length > 0 ? (
                 <View style={styles.messageImagesContainer}>
                   {item.imageAttachments.map((img: any) => (
                     <TouchableOpacity key={img.id} onPress={() => setViewingImageUri(img.url)}>
@@ -529,19 +584,19 @@ const ChatScreen = () => {
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
+              ) : null}
 
               {/* Video Attachments */}
-              {item.videoAttachments?.length > 0 && (
+              {item.videoAttachments && item.videoAttachments.length > 0 ? (
                 <View style={styles.messageImagesContainer}>
                   {item.videoAttachments.map((vid: any) => (
                     <VideoAttachment key={vid.id} uri={vid.url} />
                   ))}
                 </View>
-              )}
+              ) : null}
 
               {/* File Attachments */}
-              {item.fileAttachments?.length > 0 && (
+              {item.fileAttachments && item.fileAttachments.length > 0 ? (
                 <View style={styles.messageImagesContainer}>
                   {item.fileAttachments.map((file: any) => (
                     <TouchableOpacity key={file.id} style={styles.messageFile} onPress={() => Linking.openURL(file.url)}>
@@ -552,7 +607,7 @@ const ChatScreen = () => {
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
+              ) : null}
 
               {(() => {
                 const content = item.content || item.text || "";
@@ -592,8 +647,16 @@ const ChatScreen = () => {
                   );
                 }
 
+                if (item.isRecalled) {
+                  return (
+                    <Text style={[styles.messageText, { fontStyle: "italic", color: isMine ? "#E0E0E0" : isDarkMode ? colors.textSecondary : "#777" }]}>
+                      Tin nhắn đã được thu hồi
+                    </Text>
+                  );
+                }
+
                 return (
-                  <Text style={[styles.messageText, isMine ? styles.textWhite : styles.textBlack]}>
+                  <Text style={[styles.messageText, isMine ? styles.textWhite : isDarkMode ? { color: colors.text } : styles.textBlack]}>
                     {content}
                   </Text>
                 );
@@ -601,14 +664,14 @@ const ChatScreen = () => {
 
               <View style={styles.messageFooter}>
                 <Text style={[styles.timeText, isMine ? {color: "#E0E0E0"} : {color: "#AAA"}]}>{item.time}</Text>
-                {isMine && <Ionicons name="checkmark-done" size={14} color="#E0E0E0" />}
+                {isMine ? <Ionicons name="checkmark-done" size={14} color="#E0E0E0" /> : null}
               </View>
             </View>
           )}
         </TouchableOpacity>
 
         {/* Reactions Row */}
-        {item.reactions?.length > 0 && (
+        {item.reactions && item.reactions.length > 0 ? (
           <View style={[styles.reactionRow, isMine ? styles.reactionMine : styles.reactionOther]}>
             {item.reactions.map((r: any, idx: number) => (
               <TouchableOpacity
@@ -620,7 +683,7 @@ const ChatScreen = () => {
               </TouchableOpacity>
             ))}
           </View>
-        )}
+        ) : null}
       </View>
     );
   };
@@ -635,7 +698,7 @@ const ChatScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDarkMode ? { backgroundColor: colors.background } : null]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -669,7 +732,7 @@ const ChatScreen = () => {
       </View>
       
       {/* Ongoing Call Banner */}
-      {conversation?.isGroup && ongoingGroupCalls[conversation.id] && callState === 'idle' && (
+      {conversation?.isGroup && !!ongoingGroupCalls[conversation.id] && callState === 'idle' ? (
         <View style={styles.activeCallBanner}>
           <View style={styles.activeCallIconWrap}>
             <Ionicons name="videocam" size={20} color="white" />
@@ -685,7 +748,7 @@ const ChatScreen = () => {
             <Text style={styles.joinCallBtnText}>Tham gia</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
 
       {/* Message List */}
       <KeyboardAvoidingView
@@ -695,6 +758,11 @@ const ChatScreen = () => {
       >
         {loading ? (
           <ActivityIndicator style={{ flex: 1 }} color={ZALO_BLUE} />
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
+            <Text style={[styles.emptyText, isDarkMode ? { color: colors.textSecondary } : null]}>Chưa có tin nhắn</Text>
+          </View>
         ) : (
           <FlatList
             ref={listRef}
@@ -707,63 +775,71 @@ const ChatScreen = () => {
         )}
 
         {/* Composer */}
-        <View style={[styles.composer, { paddingBottom: insets.bottom || 10 }]}>
-          {replyingTo && (
-            <View style={styles.replyBar}>
-              <View style={styles.replySide} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.replyName}>Trả lời {replyingTo.sender?.name}</Text>
-                <Text style={styles.replyContent} numberOfLines={1}>{replyingTo.content}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                <Ionicons name="close-circle" size={20} color="#999" />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {pendingAttachments.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingAttachmentsContainer}>
-              {pendingAttachments.map(item => (
-                <View key={item.id} style={styles.pendingAttachmentItem}>
-                  <Image source={{ uri: item.uri }} style={styles.pendingAttachmentImage} />
-                  <TouchableOpacity
-                    style={styles.pendingAttachmentRemove}
-                    onPress={() => setPendingAttachments(prev => prev.filter(p => p.id !== item.id))}
-                  >
-                    <Ionicons name="close-circle" size={22} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          )}
-
-          <View style={styles.inputRow}>
-            <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
-              <Ionicons name="add-circle-outline" size={28} color="#666" />
-            </TouchableOpacity>
-            {(conversation?.isGroup || conversation?.type === 'group') && (
-              <TouchableOpacity onPress={() => setShowCreatePoll(true)} style={{ marginLeft: 4 }}>
-                <Ionicons name="bar-chart-outline" size={22} color="#7C3AED" />
-              </TouchableOpacity>
-            )}
-            <TextInput
-              style={styles.input}
-              placeholder="Tin nhắn"
-              multiline
-              value={message}
-              onChangeText={setMessage}
-            />
-            {message.trim().length > 0 || pendingAttachments.length > 0 ? (
-              <TouchableOpacity onPress={handleSend}>
-                <Ionicons name="send" size={24} color={ZALO_BLUE} />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity onPress={() => setShowEmojiPicker(true)}>
-                <Ionicons name="happy-outline" size={26} color="#666" />
-              </TouchableOpacity>
-            )}
+        {!canComment ? (
+          <View style={[styles.restrictedComposer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom || 15 }]}>
+            <Ionicons name="lock-closed" size={16} color={isDarkMode ? colors.textSecondary : "#777"} style={{ marginRight: 8 }} />
+            <Text style={[styles.restrictedText, isDarkMode ? { color: colors.textSecondary } : null]}>Chỉ trưởng và phó nhóm mới được gửi tin nhắn vào nhóm này.</Text>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.composer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom || 10 }]}>
+            {replyingTo ? (
+              <View style={[styles.replyBar, isDarkMode ? { backgroundColor: colors.background } : null]}>
+                <View style={styles.replySide} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.replyName}>Trả lời {replyingTo.sender?.name}</Text>
+                  <Text style={[styles.replyContent, isDarkMode ? { color: colors.textSecondary } : null]} numberOfLines={1}>{replyingTo.content}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setReplyingTo(null)}>
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {pendingAttachments.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingAttachmentsContainer}>
+                {pendingAttachments.map(item => (
+                  <View key={item.id} style={styles.pendingAttachmentItem}>
+                    <Image source={{ uri: item.uri }} style={styles.pendingAttachmentImage} />
+                    <TouchableOpacity
+                      style={styles.pendingAttachmentRemove}
+                      onPress={() => setPendingAttachments(prev => prev.filter(p => p.id !== item.id))}
+                    >
+                      <Ionicons name="close-circle" size={22} color="#FF3B30" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            <View style={styles.inputRow}>
+              <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
+                <Ionicons name="add-circle-outline" size={28} color={isDarkMode ? colors.textSecondary : "#666"} />
+              </TouchableOpacity>
+              {conversation?.isGroup || conversation?.type === 'group' ? (
+                <TouchableOpacity onPress={() => setShowCreatePoll(true)} style={{ marginLeft: 4 }}>
+                  <Ionicons name="bar-chart-outline" size={22} color="#7C3AED" />
+                </TouchableOpacity>
+              ) : null}
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text }]}
+                placeholder="Tin nhắn"
+                placeholderTextColor={isDarkMode ? "#6B7280" : "#9CA3AF"}
+                multiline
+                value={message}
+                onChangeText={setMessage}
+              />
+              {message.trim().length > 0 || pendingAttachments.length > 0 ? (
+                <TouchableOpacity onPress={handleSend}>
+                  <Ionicons name="send" size={24} color={ZALO_BLUE} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => setShowEmojiPicker(true)}>
+                  <Ionicons name="happy-outline" size={26} color={isDarkMode ? colors.textSecondary : "#666"} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Modals & Overlays */}
@@ -800,7 +876,7 @@ const ChatScreen = () => {
           }}
         >
           <Pressable style={styles.forwardSheet} onPress={() => { }}>
-            <Text style={styles.forwardTitle}>Forward message</Text>
+            <Text style={styles.forwardTitle}>Chuyển tiếp tin nhắn</Text>
 
             {forwardLoading ? (
               <View style={styles.forwardLoadingWrap}>
@@ -834,7 +910,7 @@ const ChatScreen = () => {
                 }}
                 ListEmptyComponent={
                   <View style={styles.forwardEmptyWrap}>
-                    <Text style={styles.forwardEmptyText}>No conversations available</Text>
+                    <Text style={styles.forwardEmptyText}>Không có cuộc trò chuyện nào</Text>
                   </View>
                 }
               />
@@ -848,7 +924,7 @@ const ChatScreen = () => {
                   setSelectedForwardTargets([]);
                 }}
               >
-                <Text style={styles.forwardCancelText}>Cancel</Text>
+                <Text style={styles.forwardCancelText}>Hủy</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -862,7 +938,7 @@ const ChatScreen = () => {
                 {forwarding ? (
                   <ActivityIndicator color="white" size="small" />
                 ) : (
-                  <Text style={styles.forwardSendText}>Forward</Text>
+                  <Text style={styles.forwardSendText}>Chuyển tiếp</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -921,13 +997,13 @@ const ChatScreen = () => {
           >
             <Ionicons name="close" size={32} color="white" />
           </TouchableOpacity>
-          {viewingImageUri && (
+          {viewingImageUri ? (
             <Image
               source={{ uri: viewingImageUri }}
               style={{ width: "100%", height: "80%" }}
               resizeMode="contain"
             />
-          )}
+          ) : null}
         </View>
       </Modal>
 
@@ -952,6 +1028,24 @@ const ActionItem = ({ icon, label, onPress, color = "#333" }: any) => (
 /** --- STYLES --- **/
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F4F5F7" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 100 },
+  emptyText: { color: "#6B7280", marginTop: 8, fontSize: 14 },
+  restrictedComposer: {
+    backgroundColor: "#F3F4F6",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E5",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  restrictedText: {
+    color: "#6B7280",
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
+  },
   header: {
     height: 60,
     backgroundColor: ZALO_BLUE,

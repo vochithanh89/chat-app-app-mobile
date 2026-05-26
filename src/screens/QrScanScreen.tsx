@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect } from "react"
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal } from "react-native"
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera"
+import { CameraView, useCameraPermissions } from "expo-camera"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
 import api from "../services/api"
-import { ZALO_BLUE } from "../theme" // Assuming standard styling
+import { useTheme } from "../contexts/ThemeContext"
 
 export default function QrScanScreen() {
   const [permission, requestPermission] = useCameraPermissions()
@@ -12,7 +12,10 @@ export default function QrScanScreen() {
   const [loading, setLoading] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [qrSessionId, setQrSessionId] = useState<string | null>(null)
+  const [scanMode, setScanMode] = useState<"login" | "group" | null>(null)
+  const [groupInviteCode, setGroupInviteCode] = useState<string | null>(null)
   
+  const { isDarkMode: darkMode } = useTheme()
   const navigation = useNavigation<any>()
 
   useEffect(() => {
@@ -22,13 +25,19 @@ export default function QrScanScreen() {
   }, [permission])
 
   if (!permission) {
-    return <View style={styles.container}><Text>Đang yêu cầu quyền truy cập camera...</Text></View>
+    return (
+      <View style={[styles.container, { backgroundColor: darkMode ? "#111827" : "white", justifyContent: "center", alignItems: "center" }]}>
+        <Text style={{ color: darkMode ? "white" : "black" }}>Đang yêu cầu quyền truy cập camera...</Text>
+      </View>
+    )
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
-        <Text style={{ textAlign: 'center' }}>Ứng dụng cần quyền truy cập camera để quét mã QR đăng nhập.</Text>
+      <View style={[styles.container, { backgroundColor: darkMode ? "#111827" : "white", justifyContent: "center", alignItems: "center" }]}>
+        <Text style={{ textAlign: 'center', color: darkMode ? "white" : "black", paddingHorizontal: 20, marginBottom: 20 }}>
+          Ứng dụng cần quyền truy cập camera để quét mã QR.
+        </Text>
         <TouchableOpacity style={styles.btn} onPress={requestPermission}>
           <Text style={styles.btnText}>Cấp quyền</Text>
         </TouchableOpacity>
@@ -40,31 +49,69 @@ export default function QrScanScreen() {
     if (scanned) return
     setScanned(true)
     
-    // Parse the QR code data: mychat://qr-login?session=abcxyz123
+    // UUID regex format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    let scannedQrContent: string | null = null
+    let inviteCode: string | null = null
+
+    const trimmedData = data.trim()
+
+    // 1. Check if it is a group join URL
+    if (trimmedData.includes("/join/")) {
+      const parts = trimmedData.split("/join/")
+      if (parts.length > 1) {
+        inviteCode = parts[1].split("?")[0].split("#")[0].trim().toUpperCase()
+      }
+    } 
+    // 2. Check if it is a raw 8-character group invite code
+    else if (/^[A-Z0-9]{8}$/i.test(trimmedData)) {
+      inviteCode = trimmedData.toUpperCase()
+    } 
+    // 3. Check if it is a login UUID
+    else if (uuidRegex.test(trimmedData)) {
+      scannedQrContent = trimmedData
+    } else if (trimmedData.includes("qr-login?session=")) {
+      try {
+        const url = new URL(trimmedData)
+        scannedQrContent = url.searchParams.get("session")
+      } catch (err) {
+        const match = trimmedData.match(/session=([^&]+)/)
+        if (match) {
+          scannedQrContent = match[1]
+        }
+      }
+    }
+
     try {
-      if (data.includes('qr-login?session=')) {
-        const url = new URL(data)
-        const sessionId = url.searchParams.get('session')
+      if (scannedQrContent) {
+        setScanMode("login")
+        setGroupInviteCode(null)
+        setLoading(true)
         
+        // Call API to scan
+        const response = await api.post("/api/v1/qr-login/scan", { qrContent: scannedQrContent })
+        
+        const sessionId = response.data?.data?.sessionId
         if (sessionId) {
           setQrSessionId(sessionId)
-          setLoading(true)
-          
-          // Call API to scan
-          await api.post('/api/v1/qr-login/scan', { qrSessionId: sessionId })
-          
           setLoading(false)
           setShowConfirm(true)
         } else {
-          Alert.alert("Lỗi", "Mã QR không hợp lệ")
+          Alert.alert("Lỗi", "Không nhận được phiên đăng nhập hợp lệ từ hệ thống")
+          setLoading(false)
           setScanned(false)
         }
+      } else if (inviteCode) {
+        setScanMode("group")
+        setQrSessionId(null)
+        setGroupInviteCode(inviteCode)
+        setShowConfirm(true)
       } else {
-        Alert.alert("Lỗi", "Mã QR không thuộc hệ thống đăng nhập")
+        Alert.alert("Lỗi", "Mã QR không hợp lệ hoặc không thuộc hệ thống")
         setScanned(false)
       }
     } catch (e: any) {
-      console.log('QR Scan Error:', e.response?.data || e.message)
+      console.log("QR Scan Error:", e.response?.data || e.message)
       Alert.alert("Lỗi", "Không thể xác nhận mã QR")
       setLoading(false)
       setScanned(false)
@@ -72,44 +119,99 @@ export default function QrScanScreen() {
   }
 
   const handleConfirm = async () => {
-    if (!qrSessionId) return
-    
-    try {
-      setLoading(true)
-      await api.post('/api/v1/qr-login/confirm', { qrSessionId })
-      setShowConfirm(false)
-      Alert.alert("Thành công", "Đăng nhập trên Web thành công!", [
-        { text: "OK", onPress: () => navigation.goBack() }
-      ])
-    } catch (e: any) {
-      console.log('QR Confirm Error:', e.response?.data || e.message)
-      Alert.alert("Lỗi", "Đã xảy ra lỗi khi xác nhận đăng nhập")
-    } finally {
-      setLoading(false)
+    if (scanMode === "login") {
+      if (!qrSessionId) return
+      
+      try {
+        setLoading(true)
+        await api.post("/api/v1/qr-login/confirm", { sessionId: qrSessionId })
+        setShowConfirm(false)
+        Alert.alert("Thành công", "Đăng nhập trên Web thành công!", [
+          { text: "OK", onPress: () => navigation.goBack() }
+        ])
+      } catch (e: any) {
+        console.log("QR Confirm Error:", e.response?.data || e.message)
+        Alert.alert("Lỗi", "Đã xảy ra lỗi khi xác nhận đăng nhập")
+      } finally {
+        setLoading(false)
+      }
+    } else if (scanMode === "group") {
+      if (!groupInviteCode) return
+
+      try {
+        setLoading(true)
+        const response = await api.post("/api/v1/conversations/join", { code: groupInviteCode })
+        const payloadData = response.data?.data
+        setShowConfirm(false)
+        
+        if (payloadData?.status === 'pending') {
+          Alert.alert("Chờ phê duyệt", payloadData.message || "Yêu cầu tham gia của bạn đang chờ phê duyệt từ quản trị viên.", [
+            { text: "Đóng", onPress: () => navigation.goBack() }
+          ])
+        } else {
+          const conv = payloadData?.conversation
+          if (conv) {
+            Alert.alert("Thành công", "Tham gia nhóm thành công!", [
+              {
+                text: "Trò chuyện ngay",
+                onPress: () => {
+                  navigation.replace("Chat", {
+                    conversationId: conv.id,
+                    user: {
+                      id: conv.id,
+                      name: conv.name,
+                      avatar: conv.avatarUrl,
+                      isGroup: true,
+                    },
+                  })
+                }
+              },
+              {
+                text: "Để sau",
+                onPress: () => navigation.goBack()
+              }
+            ])
+          } else {
+            Alert.alert("Thành công", "Tham gia nhóm thành công!", [
+              { text: "OK", onPress: () => navigation.goBack() }
+            ])
+          }
+        }
+      } catch (e: any) {
+        console.log("Group Join Error:", e.response?.data || e.message)
+        Alert.alert("Lỗi", e.response?.data?.message || "Không thể tham gia nhóm")
+      } finally {
+        setLoading(false)
+        setScanned(false)
+      }
     }
   }
 
   const handleReject = async () => {
-    if (!qrSessionId) return
-    
-    try {
-      await api.post('/api/v1/qr-login/reject', { qrSessionId })
-    } catch (e) {
-      // Ignore
+    if (scanMode === "login" && qrSessionId) {
+      try {
+        await api.post("/api/v1/qr-login/reject", { sessionId: qrSessionId })
+      } catch (e) {
+        // Ignore
+      }
     }
     
     setShowConfirm(false)
     setScanned(false)
     setQrSessionId(null)
+    setGroupInviteCode(null)
+    setScanMode(null)
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: darkMode ? "#1F2937" : "white", borderBottomColor: darkMode ? "#374151" : "#E5E7EB" }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="black" />
+          <Ionicons name="arrow-back" size={24} color={darkMode ? "white" : "black"} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Quét mã QR Đăng nhập</Text>
+        <Text style={[styles.headerTitle, { color: darkMode ? "white" : "black" }]}>
+          {scanMode === "group" ? "Quét mã QR Vào nhóm" : "Quét mã QR"}
+        </Text>
       </View>
 
       <View style={styles.cameraContainer}>
@@ -124,7 +226,7 @@ export default function QrScanScreen() {
         <View style={styles.overlay}>
           <View style={styles.scanBox} />
           <Text style={styles.scanText}>
-            Di chuyển camera đến mã QR trên màn hình máy tính để đăng nhập
+            Di chuyển camera đến mã QR đăng nhập máy tính hoặc QR liên kết vào nhóm
           </Text>
         </View>
       </View>
@@ -132,19 +234,33 @@ export default function QrScanScreen() {
       {/* Confirmation Modal */}
       <Modal visible={showConfirm} transparent animationType="fade">
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Ionicons name="laptop-outline" size={60} color="#0068FF" />
-            <Text style={styles.modalTitle}>Xác nhận đăng nhập</Text>
-            <Text style={styles.modalText}>
-              Bạn có muốn đăng nhập tài khoản này trên trình duyệt web không?
+          <View style={[styles.modalContent, { backgroundColor: darkMode ? "#1F2937" : "white" }]}>
+            <Ionicons 
+              name={scanMode === "login" ? "laptop-outline" : "people-outline"} 
+              size={60} 
+              color="#0068FF" 
+            />
+            <Text style={[styles.modalTitle, { color: darkMode ? "white" : "black" }]}>
+              {scanMode === "login" ? "Xác nhận đăng nhập" : "Xác nhận tham gia nhóm"}
+            </Text>
+            <Text style={[styles.modalText, { color: darkMode ? "#9CA3AF" : "#555" }]}>
+              {scanMode === "login" 
+                ? "Bạn có muốn đăng nhập tài khoản này trên trình duyệt web không?" 
+                : `Bạn có muốn tham gia nhóm trò chuyện với mã mời "${groupInviteCode}" không?`}
             </Text>
             
             <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalBtn, styles.rejectBtn]} onPress={handleReject} disabled={loading}>
-                <Text style={styles.rejectBtnText}>Từ chối</Text>
+              <TouchableOpacity style={[styles.modalBtn, styles.rejectBtn, { backgroundColor: darkMode ? "#374151" : "#F3F4F6" }]} onPress={handleReject} disabled={loading}>
+                <Text style={[styles.rejectBtnText, { color: darkMode ? "#F9FAFB" : "#333" }]}>
+                  {scanMode === "login" ? "Từ chối" : "Hủy"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalBtn, styles.confirmBtn]} onPress={handleConfirm} disabled={loading}>
-                <Text style={styles.confirmBtnText}>{loading ? 'Đang xử lý...' : 'Đăng nhập'}</Text>
+                <Text style={styles.confirmBtnText}>
+                  {scanMode === "login" 
+                    ? (loading ? "Đang xử lý..." : "Đăng nhập") 
+                    : (loading ? "Đang tham gia..." : "Tham gia")}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -162,7 +278,8 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 15,
     paddingHorizontal: 20,
-    backgroundColor: "white"
+    backgroundColor: "white",
+    borderBottomWidth: 1,
   },
   backButton: { marginRight: 15 },
   headerTitle: { fontSize: 18, fontWeight: "600" },
@@ -188,7 +305,7 @@ const styles = StyleSheet.create({
   },
   scanText: { color: "white", textAlign: "center", paddingHorizontal: 40 },
   
-  btn: { backgroundColor: "#0068FF", padding: 12, borderRadius: 8, margin: 20 },
+  btn: { backgroundColor: "#0068FF", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
   btnText: { color: "white", textAlign: "center", fontWeight: "bold" },
 
   modalContainer: {

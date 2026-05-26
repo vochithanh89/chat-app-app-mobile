@@ -94,11 +94,11 @@ const CreatePollModal: React.FC<CreatePollModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingContainer}
+      >
+        <Pressable style={styles.overlay} onPress={onClose}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             {/* Header */}
             <View style={styles.sheetHeader}>
@@ -153,23 +153,23 @@ const CreatePollModal: React.FC<CreatePollModalProps> = ({
                     onChangeText={(v) => updateOption(idx, v)}
                     maxLength={300}
                   />
-                  {options.length > 2 && (
+                  {options.length > 2 ? (
                     <TouchableOpacity
                       onPress={() => removeOption(idx)}
                       style={styles.removeBtn}
                     >
                       <Ionicons name="close-circle" size={22} color="#EF4444" />
                     </TouchableOpacity>
-                  )}
+                  ) : null}
                 </View>
               ))}
 
-              {options.length < 20 && (
+              {options.length < 20 ? (
                 <TouchableOpacity style={styles.addBtn} onPress={addOption}>
                   <Ionicons name="add-circle-outline" size={20} color={PURPLE} />
                   <Text style={styles.addBtnText}>Thêm lựa chọn</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
 
               {/* Allow Multiple */}
               <View style={styles.switchRow}>
@@ -189,7 +189,7 @@ const CreatePollModal: React.FC<CreatePollModalProps> = ({
                 <Text style={styles.cancelText}>Huỷ</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+                style={[styles.submitBtn, submitting ? styles.submitBtnDisabled : undefined]}
                 onPress={handleSubmit}
                 disabled={submitting}
               >
@@ -204,11 +204,11 @@ const CreatePollModal: React.FC<CreatePollModalProps> = ({
               </TouchableOpacity>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   overlay: {
@@ -216,8 +216,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  keyboardView: {
-    justifyContent: 'flex-end',
+  keyboardAvoidingContainer: {
+    flex: 1,
   },
   sheet: {
     backgroundColor: 'white',

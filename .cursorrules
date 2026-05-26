@@ -1,0 +1,36 @@
+# CẤU HÌNH QUY TẮC AI CHO DỰ ÁN CHAT APP MOBILE (NATIVEWIND & REACT NATIVE EXPO)
+
+Tệp tin này được thiết lập để cung cấp ngữ cảnh tức thì và các quy tắc viết code nghiêm ngặt cho bất kỳ công cụ AI nào (Cursor, VS Code Copilot, Claude, v.v.) khi làm việc trong dự án di động này.
+
+## 1. TỔNG QUAN NGỮ CẢNH (CONTEXT)
+*   **Tên dự án**: ChatAppMobile (Ứng dụng trò chuyện di động thời gian thực).
+*   **Công nghệ**: React Native (Expo SDK 54), TypeScript, NativeWind (TailwindCSS v3), Expo Video, react-native-webrtc (Gọi điện thoại), Socket.io Client.
+*   **Kiến trúc tổng quan**: Vui lòng tham khảo chi tiết tại file tài liệu trung tâm [SYSTEM_AI_TRAINING_GUIDE.md](./SYSTEM_AI_TRAINING_GUIDE.md) ở gốc dự án.
+
+## 2. QUY TẮC PHÁT TRIỂN GIAO DIỆN (UI & LAYOUT RULES)
+1.  **Tránh bàn phím (Keyboard Avoiding)**:
+    *   Các màn hình nhập liệu hoặc chat (`ChatScreen.tsx`, `AiScreen.tsx`) phải sử dụng cấu trúc `KeyboardAvoidingView` bọc toàn bộ nội dung chính (trừ Header) để co giãn chính xác.
+    *   Bắt buộc thiết lập `behavior={Platform.OS === "ios" ? "padding" : "height"}` và `keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}`.
+    *   Vùng danh sách chat bên trong phải được bọc trong một `View` sử dụng style co giãn trực tiếp: `style={{ flex: 1, backgroundColor: "#F9FAFB" }}` để tránh lỗi NativeWind không co giãn khi bàn phím hiện lên.
+    *   Bọc ngoài cùng bằng `SafeAreaView` và chỉ định `edges={["top", "left", "right"]}` để tránh xung đột padding cạnh đáy của thiết bị.
+
+2.  **Định dạng kiểu dáng (Styling)**:
+    *   Sử dụng NativeWind (TailwindCSS) thông qua thuộc tính `className` cho các styles căn lề, màu sắc, bo góc thông thường.
+    *   Đối với các thuộc tính Layout quan trọng (như `flex: 1`, co giãn, hoặc vị trí tuyệt đối ảnh hưởng bởi bàn phím), ưu tiên sử dụng thuộc tính `style={{ ... }}` trực tiếp của React Native để đảm bảo tính ổn định trên cả giả lập Android và thiết bị thật iOS.
+
+## 3. NGUYÊN TẮC THIẾT KẾ CODE (CODE QUALITY & TYPESCRIPT)
+1.  **TypeScript & Khai báo kiểu**:
+    *   Không được lạm dụng kiểu `any`. Khai báo interface/type rõ ràng cho toàn bộ tham số, Props và dữ liệu trả về từ API.
+    *   Khi ánh xạ dữ liệu từ API Backend sang giao diện ứng dụng, bắt buộc sử dụng các mapper hàm trong `src/services/chatMappers.ts`.
+
+2.  **Quản lý State & Hiệu năng**:
+    *   Sử dụng `useCallback` cho các hàm gửi đi hoặc truyền xuống Component con thông qua Props để tối ưu hóa hiệu năng render.
+    *   Sử dụng `useMemo` cho các phép tính toán phức tạp hoặc lọc dữ liệu (ví dụ: nhóm tin nhắn, đếm số thành viên trực tuyến).
+    *   Luôn dọn dẹp các Socket listener (`socketService.off('...')`) hoặc Event Listener trong phần cleanup return của `useEffect`.
+
+3.  **Tương tác mạng & API**:
+    *   Không viết `axios` trực tiếp trong màn hình. Khai báo API Endpoint tập trung trong `src/services/api.ts`.
+    *   Xử lý lỗi mạng bằng khối `try...catch` và thông báo rõ ràng tới người dùng qua `Alert.alert`.
+
+---
+*Mô hình AI hãy tự động đọc kỹ các quy tắc trên và file [SYSTEM_AI_TRAINING_GUIDE.md](./SYSTEM_AI_TRAINING_GUIDE.md) trước khi đề xuất bất kỳ đoạn mã nguồn nào.*

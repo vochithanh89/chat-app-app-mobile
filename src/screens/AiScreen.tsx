@@ -16,6 +16,7 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { aiAPI, conversationAPI, messageAPI } from "../services/api";
 import { normalizeConversation, normalizeMessage } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 const SUGGESTED_PROMPTS = [
   "Giải thích cách sử dụng ứng dụng này",
@@ -27,6 +28,7 @@ const SUGGESTED_PROMPTS = [
 const AiScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { isDarkMode: darkMode, colors } = useTheme();
   const currentUserId = user?.uuid || user?.id || null;
   const listRef = useRef<FlatList<any> | null>(null);
 
@@ -265,10 +267,21 @@ const AiScreen = () => {
   }, [conversation]);
 
   const renderMessage = ({ item }: { item: any }) => {
+    if (item.isTyping) {
+      return (
+        <View className="px-4 py-2 items-start">
+          <View className={`rounded-2xl px-4 py-3 flex-row items-center gap-2 ${darkMode ? "bg-gray-800" : "bg-gray-200"}`}>
+            <ActivityIndicator size="small" color={darkMode ? "#9CA3AF" : "#4B5563"} />
+            <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>AI đang trả lời...</Text>
+          </View>
+        </View>
+      );
+    }
+
     const isMine = item.user === "me";
     const alignment = isMine ? "items-end" : "items-start";
-    const bubbleColor = isMine ? "bg-blue-500" : "bg-gray-200";
-    const textColor = isMine ? "text-white" : "text-gray-900";
+    const bubbleColor = isMine ? "bg-blue-500" : (darkMode ? "bg-gray-800" : "bg-gray-200");
+    const textColor = isMine ? "text-white" : (darkMode ? "text-gray-100" : "text-gray-900");
 
     return (
       <View className={`px-4 py-2 ${alignment}`}>
@@ -281,12 +294,19 @@ const AiScreen = () => {
 
   const isEmpty = !initializing && messages.length === 0;
 
+  const listData = useMemo(() => {
+    if (sending) {
+      return [{ id: "typing", isTyping: true, user: "other" }, ...messages];
+    }
+    return messages;
+  }, [messages, sending]);
+
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View className="border-b border-gray-200 bg-white px-4 py-4 flex-row items-center">
+    <SafeAreaView className={`flex-1 ${darkMode ? "bg-gray-900" : "bg-white"}`} edges={["top", "left", "right"]}>
+      <View className={`border-b px-4 py-4 flex-row items-center ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
         <View className="flex-1">
-          <Text className="text-lg font-semibold text-gray-900">AI Assistant</Text>
-          <Text className="text-xs text-gray-500">Powered by Google Gemini</Text>
+          <Text className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Trợ lý AI</Text>
+          <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Hỗ trợ bởi Google Gemini</Text>
         </View>
         <Pressable
           onPress={() => {
@@ -297,7 +317,7 @@ const AiScreen = () => {
           }}
           className="mr-3 p-2"
         >
-          <Ionicons name="time-outline" size={18} color="#4B5563" />
+          <Ionicons name="time-outline" size={18} color={darkMode ? "#9CA3AF" : "#4B5563"} />
         </Pressable>
         <Pressable onPress={handleNewChat} className="mr-2 p-2">
           <Ionicons name="add-circle-outline" size={22} color="#0068FF" />
@@ -307,88 +327,95 @@ const AiScreen = () => {
         </Pressable>
       </View>
 
-      {showHistory && (
-        <View className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-          <Text className="text-sm font-semibold text-gray-800 mb-2">Lịch sử chat AI</Text>
-          {historyLoading ? (
-            <ActivityIndicator size="small" color="#0068FF" />
-          ) : conversations.length === 0 ? (
-            <Text className="text-sm text-gray-500">Chưa có lịch sử conversation AI.</Text>
-          ) : (
-            conversations.map((conv) => (
-              <Pressable
-                key={conv.id}
-                onPress={() => openHistoryConversation(conv)}
-                className="rounded-xl px-3 py-3 mb-2 bg-white border border-gray-200"
-              >
-                <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-                  {conv.name || "Trò chuyện AI"}
-                </Text>
-                <Text className="text-xs text-gray-500" numberOfLines={1}>
-                  {conv.lastMsg || "Không có tin nhắn"}
-                </Text>
-              </Pressable>
-            ))
-          )}
-        </View>
-      )}
-
-      <View className="flex-1 bg-gray-50">
-        {initializing ? (
-          <View className="flex-1 justify-center items-center px-4">
-            <ActivityIndicator size="large" color="#0068FF" />
-            <Text className="text-sm text-gray-500 mt-3">Đang khởi động AI...</Text>
-          </View>
-        ) : (
-          <>
-            {error ? (
-              <View className="p-4 bg-red-50 border border-red-200 m-4 rounded-xl">
-                <Text className="text-red-700 text-sm">{error}</Text>
-              </View>
-            ) : null}
-
-            {isEmpty ? (
-              <View className="flex-1 items-center justify-center px-8">
-                <Text className="text-base text-gray-900 font-semibold mb-2">Chào bạn! Tôi là AI Assistant.</Text>
-                <Text className="text-sm text-gray-500 text-center mb-4">
-                  Hỏi tôi về tính năng, quản lý nhóm, hoặc cách làm việc với ứng dụng.
-                </Text>
-                <View className="w-full space-y-2">
-                  {SUGGESTED_PROMPTS.map((prompt) => (
-                    <Pressable
-                      key={prompt}
-                      onPress={() => handleSend(prompt)}
-                      className="rounded-full border border-gray-200 px-4 py-3 bg-white"
-                    >
-                      <Text className="text-sm text-gray-700">{prompt}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <FlatList
-                ref={listRef}
-                data={messages}
-                inverted
-                keyExtractor={(item) => String(item.id)}
-                renderItem={renderMessage}
-                contentContainerStyle={{ paddingTop: 12, paddingBottom: 16 }}
-                ListEmptyComponent={() => (
-                  <View className="flex-1 items-center justify-center py-16">
-                    <Text className="text-sm text-gray-500">Không có tin nhắn nào.</Text>
-                  </View>
-                )}
-              />
-            )}
-          </>
-        )}
+      <View className={`py-2 px-4 border-b ${darkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-100"}`}>
+        <Text className={`text-[11px] text-center ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+          🕒 Tin nhắn trong cuộc trò chuyện này sẽ tự động được xóa sau 24 giờ.
+        </Text>
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={insets.bottom + 10}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        style={{ flex: 1 }}
       >
-        <View className="border-t border-gray-200 bg-white px-4 py-3">
+        {showHistory && (
+          <View className={`border-b px-4 py-3 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"}`}>
+            <Text className={`text-sm font-semibold mb-2 ${darkMode ? "text-white" : "text-gray-800"}`}>Lịch sử chat AI</Text>
+            {historyLoading ? (
+              <ActivityIndicator size="small" color="#0068FF" />
+            ) : conversations.length === 0 ? (
+              <Text className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Chưa có lịch sử trò chuyện AI.</Text>
+            ) : (
+              conversations.map((conv) => (
+                <Pressable
+                  key={conv.id}
+                  onPress={() => openHistoryConversation(conv)}
+                  className={`rounded-xl px-3 py-3 mb-2 border ${darkMode ? "bg-gray-700 border-gray-600" : "bg-white border-gray-200"}`}
+                >
+                  <Text className={`text-sm font-medium ${darkMode ? "text-white" : "text-gray-900"}`} numberOfLines={1}>
+                    {conv.name || "Trò chuyện AI"}
+                  </Text>
+                  <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`} numberOfLines={1}>
+                    {conv.lastMsg || "Không có tin nhắn"}
+                  </Text>
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
+
+        <View style={{ flex: 1, backgroundColor: darkMode ? "#111827" : "#F9FAFB" }}>
+          {initializing ? (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 16 }}>
+              <ActivityIndicator size="large" color="#0068FF" />
+              <Text className="text-sm text-gray-500 mt-3">Đang khởi động AI...</Text>
+            </View>
+          ) : (
+            <>
+              {error ? (
+                <View className="p-4 bg-red-50 border border-red-200 m-4 rounded-xl">
+                  <Text className="text-red-700 text-sm">{error}</Text>
+                </View>
+              ) : null}
+
+              {isEmpty ? (
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
+                  <Text className={`text-base font-semibold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>Chào bạn! Tôi là AI Assistant.</Text>
+                  <Text className={`text-sm text-center mb-4 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    Hỏi tôi về tính năng, quản lý nhóm, hoặc cách làm việc với ứng dụng.
+                  </Text>
+                  <View className="w-full space-y-2">
+                    {SUGGESTED_PROMPTS.map((prompt) => (
+                      <Pressable
+                        key={prompt}
+                        onPress={() => handleSend(prompt)}
+                        className={`rounded-full border px-4 py-3 ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-white"}`}
+                      >
+                        <Text className={`text-sm ${darkMode ? "text-gray-200" : "text-gray-700"}`}>{prompt}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <FlatList
+                  ref={listRef}
+                  data={listData}
+                  inverted
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={renderMessage}
+                  contentContainerStyle={{ paddingTop: 12, paddingBottom: 16 }}
+                  ListEmptyComponent={() => (
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 64 }}>
+                      <Text className="text-sm text-gray-500">Không có tin nhắn nào.</Text>
+                    </View>
+                  )}
+                />
+              )}
+            </>
+          )}
+        </View>
+
+        <View className={`border-t px-4 py-3 ${darkMode ? "bg-gray-850 border-gray-700" : "bg-white border-gray-200"}`} style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
           <View className="flex-row items-center gap-2">
             <TextInput
               value={input}
@@ -399,7 +426,7 @@ const AiScreen = () => {
               onSubmitEditing={() => handleSend()}
               blurOnSubmit={false}
               returnKeyType="send"
-              className="flex-1 min-h-[42px] max-h-24 rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-900"
+              className={`flex-1 min-h-[42px] max-h-24 rounded-2xl border px-4 py-3 text-sm ${darkMode ? "border-gray-700 bg-gray-700 text-white" : "border-gray-200 bg-gray-100 text-gray-900"}`}
             />
             <Pressable
               onPress={() => handleSend()}
@@ -418,9 +445,9 @@ const AiScreen = () => {
               <Pressable
                 key={prompt}
                 onPress={() => handleSend(prompt)}
-                className="rounded-full bg-gray-100 px-3 py-2"
+                className={`rounded-full px-3 py-2 ${darkMode ? "bg-gray-700" : "bg-gray-100"}`}
               >
-                <Text className="text-xs text-gray-700">{prompt}</Text>
+                <Text className={`text-xs ${darkMode ? "text-gray-300" : "text-gray-700"}`}>{prompt}</Text>
               </Pressable>
             ))}
           </View>

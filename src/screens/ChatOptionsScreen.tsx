@@ -20,6 +20,7 @@ import api, { conversationAPI, friendshipAPI, messageAPI } from "../services/api
 import { formatImageUrl, normalizeConversation, normalizeMessage, normalizeUser } from "../services/chatMappers";
 import { getLargeAvatar, getMediumAvatar } from "../utils/avatarUtils";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 type FileItem = {
   id: string;
@@ -101,6 +102,7 @@ const ChatOptionsScreen = () => {
   const route = useRoute();
   const navigation = useNavigation<any>();
   const { user: currentUser } = useAuth();
+  const { isDarkMode: darkMode, colors } = useTheme();
   const { user: routeUser, conversationId: routeConversationId } = route.params as {
     user: any;
     conversationId?: string;
@@ -473,10 +475,14 @@ const ChatOptionsScreen = () => {
 
   const renderActionButton = (icon: any, label: string, onPress: () => void, active = false) => (
     <TouchableOpacity className="w-1/3 items-center px-1 py-2" onPress={onPress}>
-      <View className={`h-12 w-12 items-center justify-center rounded-full ${active ? "bg-blue-100" : "bg-gray-100"}`}>
-        <Ionicons name={icon} size={22} color={active ? "#0068FF" : "#4B5563"} />
+      <View className={`h-12 w-12 items-center justify-center rounded-full ${
+        active 
+          ? (darkMode ? "bg-blue-950/40" : "bg-blue-100") 
+          : (darkMode ? "bg-gray-700" : "bg-gray-100")
+      }`}>
+        <Ionicons name={icon} size={22} color={active ? "#0068FF" : (darkMode ? "#D1D5DB" : "#4B5563")} />
       </View>
-      <Text className="mt-2 text-center text-xs text-gray-700" numberOfLines={2}>
+      <Text className={`mt-2 text-center text-xs ${darkMode ? "text-gray-300" : "text-gray-700"}`} numberOfLines={2}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -484,26 +490,26 @@ const ChatOptionsScreen = () => {
 
   const renderSectionHeader = (title: string, count: number | null, open: boolean, onPress: () => void) => (
     <TouchableOpacity className="flex-row items-center justify-between px-4 py-3" onPress={onPress}>
-      <Text className="font-semibold text-gray-800">{count !== null && count > 0 ? `${title} (${count})` : title}</Text>
-      <Ionicons name={open ? "chevron-down" : "chevron-forward"} size={18} color="#6B7280" />
+      <Text className={`font-semibold ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{count !== null && count > 0 ? `${title} (${count})` : title}</Text>
+      <Ionicons name={open ? "chevron-down" : "chevron-forward"} size={18} color={darkMode ? "#9CA3AF" : "#6B7280"} />
     </TouchableOpacity>
   );
 
   const renderMedia = () => {
     const displayItems = shared.media.slice(0, 9);
     return (
-      <View className="border-t border-gray-100 bg-white">
+      <View className={`border-t ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}>
         {renderSectionHeader("Ảnh/Video", shared.media.length, showMedia, () => setShowMedia((value) => !value))}
         {showMedia ? (
           <View className="px-4 pb-4">
             {displayItems.length === 0 ? (
-              <Text className="py-2 text-center text-sm text-gray-500">Chưa có ảnh hoặc video.</Text>
+              <Text className={`py-2 text-center text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Chưa có ảnh hoặc video.</Text>
             ) : (
               <View className="flex-row flex-wrap">
                 {displayItems.map((item) => (
                   <TouchableOpacity key={item.id} onPress={() => openUrl(item.url)}>
                     {item.type === "image" ? (
-                      <Image source={{ uri: item.url }} className="mb-2 mr-2 h-24 w-24 rounded-lg bg-gray-100" />
+                      <Image source={{ uri: item.url }} className={`mb-2 mr-2 h-24 w-24 rounded-lg ${darkMode ? "bg-gray-700" : "bg-gray-100"}`} />
                     ) : (
                       <View className="mb-2 mr-2 h-24 w-24 items-center justify-center rounded-lg bg-gray-900">
                         <Ionicons name="play-circle" size={30} color="white" />
@@ -522,21 +528,21 @@ const ChatOptionsScreen = () => {
   const renderFiles = () => {
     const displayFiles = shared.files.slice(0, 8);
     return (
-      <View className="border-t border-gray-100 bg-white">
+      <View className={`border-t ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}>
         {renderSectionHeader("File", shared.files.length, showFiles, () => setShowFiles((value) => !value))}
         {showFiles ? (
           <View className="px-4 pb-4">
             {displayFiles.length === 0 ? (
-              <Text className="py-2 text-center text-sm text-gray-500">Chưa có file được chia sẻ.</Text>
+              <Text className={`py-2 text-center text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Chưa có file được chia sẻ.</Text>
             ) : (
               displayFiles.map((file) => (
-                <TouchableOpacity key={file.id} className="mb-2 flex-row items-center rounded-xl bg-gray-50 p-3" onPress={() => openUrl(file.url)}>
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <TouchableOpacity key={file.id} className={`mb-2 flex-row items-center rounded-xl p-3 ${darkMode ? "bg-gray-700" : "bg-gray-50"}`} onPress={() => openUrl(file.url)}>
+                  <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${darkMode ? "bg-blue-950/40" : "bg-blue-100"}`}>
                     <Ionicons name={getFileIcon(file.name) as any} size={20} color="#0068FF" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{file.name}</Text>
-                    <Text className="text-xs text-gray-500">{file.size}</Text>
+                    <Text className={`text-sm font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`} numberOfLines={1}>{file.name}</Text>
+                    <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{file.size}</Text>
                   </View>
                 </TouchableOpacity>
               ))
@@ -550,21 +556,21 @@ const ChatOptionsScreen = () => {
   const renderLinks = () => {
     const displayLinks = shared.links.slice(0, 8);
     return (
-      <View className="border-t border-gray-100 bg-white">
+      <View className={`border-t ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}>
         {renderSectionHeader("Link", shared.links.length, showLinks, () => setShowLinks((value) => !value))}
         {showLinks ? (
           <View className="px-4 pb-4">
             {displayLinks.length === 0 ? (
-              <Text className="py-2 text-center text-sm text-gray-500">Chưa có link được chia sẻ.</Text>
+              <Text className={`py-2 text-center text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Chưa có link được chia sẻ.</Text>
             ) : (
               displayLinks.map((link) => (
-                <TouchableOpacity key={link.id} className="mb-2 flex-row items-center rounded-xl bg-gray-50 p-3" onPress={() => openUrl(link.url)}>
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+                <TouchableOpacity key={link.id} className={`mb-2 flex-row items-center rounded-xl p-3 ${darkMode ? "bg-gray-700" : "bg-gray-50"}`} onPress={() => openUrl(link.url)}>
+                  <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${darkMode ? "bg-green-950/40" : "bg-green-100"}`}>
                     <Ionicons name="globe-outline" size={20} color="#10B981" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{link.title}</Text>
-                    <Text className="text-xs text-blue-600" numberOfLines={1}>{link.url}</Text>
+                    <Text className={`text-sm font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`} numberOfLines={1}>{link.title}</Text>
+                    <Text className="text-xs text-blue-400" numberOfLines={1}>{link.url}</Text>
                   </View>
                 </TouchableOpacity>
               ))
@@ -576,23 +582,27 @@ const ChatOptionsScreen = () => {
   };
 
   const renderRow = (icon: any, title: string, subtitle: string | null, onPress: () => void, danger = false) => (
-    <TouchableOpacity className="flex-row items-center border-b border-gray-100 px-4 py-3" onPress={onPress}>
-      <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${danger ? "bg-red-100" : "bg-gray-100"}`}>
-        <Ionicons name={icon} size={20} color={danger ? "#EF4444" : "#4B5563"} />
+    <TouchableOpacity className={`flex-row items-center border-b px-4 py-3 ${darkMode ? "border-gray-700" : "border-gray-100"}`} onPress={onPress}>
+      <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${
+        danger 
+          ? (darkMode ? "bg-red-950/40" : "bg-red-100") 
+          : (darkMode ? "bg-gray-700" : "bg-gray-100")
+      }`}>
+        <Ionicons name={icon} size={20} color={danger ? "#EF4444" : (darkMode ? "#D1D5DB" : "#4B5563")} />
       </View>
       <View className="flex-1">
-        <Text className={`font-medium ${danger ? "text-red-600" : "text-gray-800"}`}>{title}</Text>
-        {subtitle ? <Text className="mt-0.5 text-xs text-gray-500">{subtitle}</Text> : null}
+        <Text className={`font-medium ${danger ? "text-red-600" : (darkMode ? "text-gray-100" : "text-gray-800")}`}>{title}</Text>
+        {subtitle ? <Text className={`mt-0.5 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{subtitle}</Text> : null}
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+      <Ionicons name="chevron-forward" size={16} color={darkMode ? "#9CA3AF" : "#9CA3AF"} />
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <StatusBar barStyle="light-content" backgroundColor="#0068FF" />
+    <SafeAreaView className={`flex-1 ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+      <StatusBar barStyle={darkMode ? "light-content" : "light-content"} backgroundColor={darkMode ? "#111827" : "#0068FF"} />
 
-      <View className="bg-blue-500 px-4 pb-4 pt-3 shadow-sm">
+      <View className={`${darkMode ? "bg-gray-800 px-4 pb-4 pt-3 border-b border-gray-700 shadow-sm" : "bg-blue-500 px-4 pb-4 pt-3 shadow-sm"}`}>
         <View className="flex-row items-center">
           <TouchableOpacity onPress={() => navigation.goBack()} className="mr-3 rounded-full p-2">
             <Ionicons name="arrow-back" size={20} color="white" />
@@ -607,12 +617,12 @@ const ChatOptionsScreen = () => {
         </View>
       ) : (
         <ScrollView className="flex-1" showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: 24 }}>
-          <View className="mb-2 bg-white px-4 py-5">
+          <View className={`mb-2 px-4 py-5 ${darkMode ? "bg-gray-800" : "bg-white"}`}>
             <View className="items-center">
               <Image source={{ uri: avatar }} className={`mb-3 h-20 w-20 ${isGroup ? "rounded-2xl" : "rounded-full"}`} />
-              <Text className="text-lg font-semibold text-gray-800">{displayName}</Text>
-              {isGroup ? <Text className="mt-1 text-xs text-gray-500">{groupMembers.length} thành viên</Text> : null}
-              {!isGroup && nickname ? <Text className="mt-1 text-xs text-gray-500">Tên gốc: {normalizedRouteUser.name}</Text> : null}
+              <Text className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-800"}`}>{displayName}</Text>
+              {isGroup ? <Text className={`mt-1 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{groupMembers.length} thành viên</Text> : null}
+              {!isGroup && nickname ? <Text className={`mt-1 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Tên gốc: {normalizedRouteUser.name}</Text> : null}
             </View>
 
             <View className="mt-5 flex-row flex-wrap">
@@ -628,7 +638,7 @@ const ChatOptionsScreen = () => {
           </View>
 
           {isGroup ? (
-            <View className="mb-2 bg-white">
+            <View className={`mb-2 ${darkMode ? "bg-gray-800" : "bg-white"}`}>
               {renderSectionHeader("Thành viên nhóm", groupMembers.length, showMembers, () => setShowMembers((value) => !value))}
               {showMembers ? (
                 <View className="px-4 pb-3">
@@ -638,9 +648,9 @@ const ChatOptionsScreen = () => {
                       <View key={member?.id || memberUser.id} className="flex-row items-center py-2">
                         <Image source={{ uri: memberUser.avatarUrl || getMediumAvatar(memberUser.name) }} className="mr-3 h-10 w-10 rounded-full" />
                         <View className="flex-1">
-                          <Text className="font-medium text-gray-800">{memberUser.name}</Text>
+                          <Text className={`font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{memberUser.name}</Text>
                           {member?.role && member.role !== "member" ? (
-                            <Text className="text-xs text-gray-500">{member.role === "owner" ? "Trưởng nhóm" : "Phó nhóm"}</Text>
+                            <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{member.role === "owner" ? "Trưởng nhóm" : "Phó nhóm"}</Text>
                           ) : null}
                         </View>
                       </View>

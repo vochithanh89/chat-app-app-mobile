@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "./src/contexts/AuthContext";
 import { CallProvider } from "./src/contexts/CallContext";
+import { ThemeProvider } from "./src/contexts/ThemeContext";
 import CallOverlay from "./src/components/CallOverlay";
 
 let renderCount = 0;
@@ -15,11 +16,13 @@ export default function App() {
   return (
     <AuthProvider>
       <CallProvider>
-        <SafeAreaProvider>
-          <StatusBar style="auto" />
-          <MainNavigator />
-          <CallOverlay />
-        </SafeAreaProvider>
+        <ThemeProvider>
+          <SafeAreaProvider>
+            <StatusBar style="auto" />
+            <MainNavigator />
+            <CallOverlay />
+          </SafeAreaProvider>
+        </ThemeProvider>
       </CallProvider>
     </AuthProvider>
   );

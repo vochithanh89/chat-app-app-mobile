@@ -12,13 +12,14 @@ import {
   TextInput,
   ActivityIndicator,
   Linking,
+  Clipboard,
 } from "react-native";
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
-import api, { friendshipAPI, conversationAPI, messageAPI } from "../services/api";
+import api, { friendshipAPI, conversationAPI, messageAPI, API_BASE_URL } from "../services/api";
 import { formatImageUrl, normalizeMessage, normalizeUser } from "../services/chatMappers";
 import { getLargeAvatar, getMediumAvatar } from "../utils/avatarUtils";
 import { useAuth } from "../contexts/AuthContext";
@@ -173,6 +174,9 @@ const GroupOptionsScreen = () => {
   const [reminderTime, setReminderTime] = useState("");
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [updatingName, setUpdatingName] = useState(false);
   const [selectedReportReason, setSelectedReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -183,9 +187,22 @@ const GroupOptionsScreen = () => {
   const [showSecurity, setShowSecurity] = useState(true);
   const [autoDeleteValue, setAutoDeleteValue] = useState("never");
 
+  // Web-synchronized Group Management States
+  const [showGroupSettings, setShowGroupSettings] = useState(true);
+  const [sendMessagesEnabled, setSendMessagesEnabled] = useState(true);
+  const [approveMembers, setApproveMembers] = useState(false);
+  const [joinRequests, setJoinRequests] = useState<any[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [showJoinRequestsModal, setShowJoinRequestsModal] = useState(false);
+  const [rotatingCode, setRotatingCode] = useState(false);
+
   const loadLocalState = useCallback(async () => {
     if (!storagePrefix) return;
-    const [storedMute, storedAutoDelete, storedReminders] = await Promise.all([
+    const [
+      storedMute, 
+      storedAutoDelete, 
+      storedReminders,
+    ] = await Promise.all([
       AsyncStorage.getItem(`${storagePrefix}:mute`),
       AsyncStorage.getItem(`${storagePrefix}:autoDelete`),
       AsyncStorage.getItem(`${storagePrefix}:reminders`),
@@ -195,6 +212,125 @@ const GroupOptionsScreen = () => {
     setAutoDeleteValue(storedAutoDelete || "never");
     setReminders(storedReminders ? JSON.parse(storedReminders) : []);
   }, [storagePrefix]);
+
+  const loadJoinRequests = async () => {
+    try {
+      setLoadingRequests(true);
+      const res = await conversationAPI.getJoinRequests(group.id);
+      const requestData = res?.data || res || [];
+      setJoinRequests(Array.isArray(requestData) ? requestData : []);
+    } catch (error) {
+      console.error("Error loading join requests:", error);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string) => {
+    try {
+      await conversationAPI.approveJoinRequest(group.id, requestId);
+      setJoinRequests(prev => prev.filter(r => r.id !== requestId));
+      loadGroupDetails(); // Refresh group members list
+      Alert.alert("Thành công", "Đã duyệt thành viên vào nhóm.");
+    } catch (error: any) {
+      console.error("Error approving request:", error);
+      Alert.alert("Lỗi", "Không thể phê duyệt yêu cầu này.");
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      await conversationAPI.rejectJoinRequest(group.id, requestId);
+      setJoinRequests(prev => prev.filter(r => r.id !== requestId));
+      Alert.alert("Thành công", "Đã từ chối yêu cầu tham gia.");
+    } catch (error: any) {
+      console.error("Error rejecting request:", error);
+      Alert.alert("Lỗi", "Không thể từ chối yêu cầu này.");
+    }
+  };
+
+  const persistGroupSetting = async (key: string, value: boolean, setter: (val: boolean) => void) => {
+    setter(value);
+    await AsyncStorage.setItem(`${storagePrefix}:${key}`, String(value));
+  };
+
+  const handleToggleSendMessages = async (checked: boolean) => {
+    const isOwner = isCurrentUserOwner();
+    if (!isOwner) {
+      Alert.alert("Quyền truy cập bị từ chối", "Chỉ có trưởng nhóm mới có quyền thay đổi cài đặt này.");
+      return;
+    }
+    
+    try {
+      setSendMessagesEnabled(checked);
+      await conversationAPI.updateSettings(group.id, { comments_restricted: !checked });
+    } catch (error: any) {
+      setSendMessagesEnabled(!checked); // Revert state
+      console.error("Error toggling send messages:", error);
+      Alert.alert("Lỗi", error.response?.data?.message || error.message || "Không thể cập nhật cài đặt nhóm");
+    }
+  };
+
+  const handleToggleApproveMembers = async (checked: boolean) => {
+    const isOwnerOrAdmin = isCurrentUserOwner() || isCurrentUserAdmin();
+    if (!isOwnerOrAdmin) {
+      Alert.alert("Quyền truy cập bị từ chối", "Chỉ có trưởng hoặc phó nhóm mới có quyền thay đổi cài đặt này.");
+      return;
+    }
+    
+    try {
+      setApproveMembers(checked);
+      await conversationAPI.updateSettings(group.id, { approve_members: checked });
+      if (checked) {
+        loadJoinRequests();
+      }
+    } catch (error: any) {
+      setApproveMembers(!checked); // Revert state
+      console.error("Error toggling approve members:", error);
+      Alert.alert("Lỗi", error.response?.data?.message || error.message || "Không thể cập nhật cài đặt nhóm");
+    }
+  };
+
+  const handleRegenerateInviteCode = async () => {
+    const isOwner = isCurrentUserOwner();
+    if (!isOwner) {
+      Alert.alert("Quyền truy cập bị từ chối", "Chỉ có trưởng nhóm mới có quyền đổi mã mời.");
+      return;
+    }
+    
+    try {
+      setRotatingCode(true);
+      const res = await conversationAPI.regenerateInviteCode(group.id);
+      const newCode = res.inviteCode || res.data?.inviteCode || "";
+      if (newCode) {
+        setCurrentGroup((prev: any) => ({
+          ...prev,
+          inviteCode: newCode
+        }));
+        Alert.alert("Thành công", "Đã tạo mới liên kết và mã mời QR thành công!");
+      }
+    } catch (error: any) {
+      console.error("Error regenerating invite code:", error);
+      Alert.alert("Lỗi", error.response?.data?.message || error.message || "Không thể tạo mới mã mời");
+    } finally {
+      setRotatingCode(false);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    const inviteCode = currentGroup?.inviteCode || group.inviteCode || "";
+    const inviteLink = inviteCode ? `${API_BASE_URL.replace("/api/v1", "")}/join/${inviteCode}` : "";
+    if (!inviteLink) return;
+    Clipboard.setString(inviteLink);
+    Alert.alert("Đã sao chép", "Liên kết tham gia nhóm đã được sao chép vào bộ nhớ tạm.");
+  };
+
+  const handleCopyInviteCode = () => {
+    const inviteCode = currentGroup?.inviteCode || group.inviteCode || "";
+    if (!inviteCode) return;
+    Clipboard.setString(inviteCode);
+    Alert.alert("Đã sao chép", "Mã nhóm đã được sao chép vào bộ nhớ tạm.");
+  };
 
   const loadMessages = useCallback(async () => {
     try {
@@ -404,6 +540,12 @@ const GroupOptionsScreen = () => {
       // Update currentGroup with fresh data including avatar
       if (updatedGroup) {
         setCurrentGroup(updatedGroup);
+        setSendMessagesEnabled(!updatedGroup.commentsRestricted);
+        const isApprove = updatedGroup.approveMembers || updatedGroup.approve_members || false;
+        setApproveMembers(isApprove);
+        if (isApprove) {
+          loadJoinRequests();
+        }
       }
     } catch (error) {
       console.error('Error loading group details:', error);
@@ -422,7 +564,7 @@ const GroupOptionsScreen = () => {
     try {
       const response = await friendshipAPI.getFriends();
       const friendsData = response.data?.friends || response.data?.data?.friends || [];
-      setFriends(Array.isArray(friendsData) ? friendsData : []);
+      setFriends(Array.isArray(friendsData) ? friendsData.map((f: any) => normalizeUser(f)) : []);
     } catch (error) {
       console.error('Error loading friends:', error);
     }
@@ -440,7 +582,7 @@ const GroupOptionsScreen = () => {
   // Add selected friends to group
   const handleAddMembers = async () => {
     if (selectedFriendsToAdd.length === 0) {
-      Alert.alert('Notification', 'Please select at least one friend to add to the group');
+      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một người bạn để thêm vào nhóm');
       return;
     }
 
@@ -455,10 +597,11 @@ const GroupOptionsScreen = () => {
       // Reload group members
       loadGroupDetails();
       
-      Alert.alert('Success', `Added ${selectedFriendsToAdd.length} members to the group`);
-    } catch (error) {
+      Alert.alert('Thành công', `Đã thêm thành công ${selectedFriendsToAdd.length} thành viên vào nhóm!`);
+    } catch (error: any) {
       console.error('Error adding members:', error);
-      Alert.alert('Error', 'Cannot add members to the group');
+      const errorMessage = error.response?.data?.message || error.message || 'Không thể thêm thành viên vào nhóm';
+      Alert.alert('Lỗi', errorMessage);
     } finally {
       setAddingMembers(false);
     }
@@ -475,24 +618,24 @@ const GroupOptionsScreen = () => {
     console.log('handleRemoveMember called with:', { memberId, memberName, groupId: group.id });
     
     Alert.alert(
-      'Remove Member',
-      `Are you sure you want to remove "${memberName}" from the group?`,
+      'Mời ra khỏi nhóm',
+      `Bạn có chắc chắn muốn mời "${memberName}" rời khỏi nhóm không?`,
       [
         {
-          text: 'Cancel',
+          text: 'Hủy',
           style: 'cancel',
         },
         {
-          text: 'Remove',
+          text: 'Đồng ý',
           style: 'destructive',
           onPress: async () => {
             try {
               await conversationAPI.removeMember(group.id, memberId);
               await loadGroupDetails();
-              Alert.alert('Success', 'Member removed from group');
+              Alert.alert('Thành công', 'Đã mời thành viên rời nhóm thành công');
             } catch (error) {
               console.error('Error removing member:', error);
-              Alert.alert('Error', 'Cannot remove member');
+              Alert.alert('Lỗi', 'Không thể mời thành viên rời nhóm');
             }
           },
         },
@@ -516,43 +659,43 @@ const GroupOptionsScreen = () => {
         await loadGroupDetails();
         // Force re-render by updating a dummy state
         setRefreshKey(prev => prev + 1);
-        Alert.alert('Success', 'Group ownership transferred');
+        Alert.alert('Thành công', 'Đã chuyển nhượng quyền trưởng nhóm thành công!');
       } else {
         // Normal role update (admin/member)
         await conversationAPI.updateMemberRole(group.id, memberId, newRole);
         await loadGroupDetails();
         // Force re-render by updating a dummy state
         setRefreshKey(prev => prev + 1);
-        Alert.alert('Success', 'Member role updated');
+        Alert.alert('Thành công', 'Đã cập nhật chức vụ thành viên thành công!');
       }
     } catch (error) {
       console.error('Error updating role:', error);
-      Alert.alert('Error', 'Cannot update role');
+      Alert.alert('Lỗi', 'Không thể cập nhật vai trò');
     }
   };
 
   // Delete group
   const handleDeleteGroup = () => {
     Alert.alert(
-      'Disband Group',
-      `Are you sure you want to disband the group "${group.name}"? This action cannot be undone.`,
+      'Giải tán nhóm',
+      `Bạn có chắc chắn muốn giải tán nhóm "${group.name}" không? Hành động này sẽ xóa vĩnh viễn toàn bộ dữ liệu nhóm.`,
       [
         {
-          text: 'Cancel',
+          text: 'Hủy',
           style: 'cancel',
         },
         {
-          text: 'Disband',
+          text: 'Giải tán',
           style: 'destructive',
           onPress: async () => {
             try {
               await conversationAPI.disbandGroup(group.id);
               // Navigate back to main tabs (Groups/Contacts)
               (navigation as any).navigate('MainApp');
-              Alert.alert('Success', 'Group disbanded');
+              Alert.alert('Thành công', 'Đã giải tán nhóm thành công!');
             } catch (error) {
               console.error('Error deleting group:', error);
-              Alert.alert('Error', 'Cannot disband group');
+              Alert.alert('Lỗi', 'Không thể giải tán nhóm');
             }
           },
         },
@@ -562,9 +705,9 @@ const GroupOptionsScreen = () => {
 
   // Handle avatar update
   const handleUpdateAvatar = async () => {
-    // Check if current user is owner or admin
-    if (!isCurrentUserOwner() && !isCurrentUserAdmin()) {
-      Alert.alert('Permission Denied', 'Only group owners and admins can update the group avatar.');
+    // Check if current user is owner
+    if (!isCurrentUserOwner()) {
+      Alert.alert('Quyền truy cập bị từ chối', 'Chỉ có trưởng nhóm mới có quyền thay đổi ảnh đại diện nhóm.');
       return;
     }
 
@@ -572,32 +715,35 @@ const GroupOptionsScreen = () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (permissionResult.granted === false) {
-      Alert.alert('Permission Required', 'Please grant permission to access your photo library to update the group avatar.');
+      Alert.alert('Yêu cầu quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh để thay đổi ảnh đại diện nhóm.');
       return;
     }
 
     // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
 
     if (!result.canceled && result.assets[0]) {
-      const imageUri = result.assets[0].uri;
-      
-      // Create form data for API
-      const formData = new FormData();
-      formData.append('avatar', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'group_avatar.jpg',
-      } as any);
+      const selectedAsset = result.assets[0];
 
       try {
         setUpdatingAvatar(true);
-        await conversationAPI.updateGroupAvatar(group.id, formData);
+        const uri = selectedAsset.uri;
+        const uriParts = uri.split('.');
+        const fileExtension = uriParts[uriParts.length - 1]?.toLowerCase() || 'jpg';
+        const ext = ['jpg', 'jpeg', 'png'].includes(fileExtension) ? fileExtension : 'jpg';
+        const fileName = `group_avatar_${Date.now()}.${ext}`;
+        const mimeType = selectedAsset.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+
+        await conversationAPI.updateGroupAvatar(group.id, {
+          uri: uri,
+          type: mimeType,
+          name: fileName,
+        });
         
         // Reload group details to get updated avatar
         await loadGroupDetails();
@@ -605,14 +751,48 @@ const GroupOptionsScreen = () => {
         // Update timestamp to force image reload
         setAvatarTimestamp(Date.now());
         
-        Alert.alert('Success', 'Group avatar updated successfully!');
-      } catch (error) {
+        Alert.alert('Thành công', 'Cập nhật ảnh đại diện nhóm thành công!');
+      } catch (error: any) {
         console.error('Error updating avatar:', error);
-        const errorMessage = error.response?.data?.message || error.message || 'Failed to update group avatar';
-        Alert.alert('Error', errorMessage);
+        const errorMessage = error.response?.data?.message || error.message || 'Không thể cập nhật ảnh đại diện nhóm';
+        Alert.alert('Lỗi', errorMessage);
       } finally {
         setUpdatingAvatar(false);
       }
+    }
+  };
+
+  // Handle group name update
+  const handleEditGroupName = () => {
+    setNewGroupName(currentGroup?.name || group.name || "");
+    setShowEditNameModal(true);
+  };
+
+  const handleSaveGroupName = async () => {
+    if (!newGroupName.trim()) {
+      Alert.alert("Lỗi", "Tên nhóm không được để trống");
+      return;
+    }
+
+    try {
+      setUpdatingName(true);
+      await conversationAPI.updateSettings(group.id, { name: newGroupName.trim() });
+      
+      const updatedName = newGroupName.trim();
+      setCurrentGroup(prev => ({
+        ...prev,
+        name: updatedName
+      }));
+      
+      await loadGroupDetails();
+      setShowEditNameModal(false);
+      Alert.alert("Thành công", "Đổi tên nhóm thành công!");
+    } catch (error: any) {
+      console.error("Error updating group name:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Không thể cập nhật tên nhóm";
+      Alert.alert("Lỗi", errorMessage);
+    } finally {
+      setUpdatingName(false);
     }
   };
 
@@ -656,30 +836,28 @@ const GroupOptionsScreen = () => {
 
       if (otherMembers.length === 0) {
         Alert.alert(
-          'Cannot Leave Group',
-          'You are the only member in this group. Please disband the group instead of leaving.',
-          [{ text: 'OK' }]
+          'Không thể rời nhóm',
+          'Bạn là thành viên duy nhất trong nhóm. Vui lòng chọn "Giải tán nhóm" thay vì rời nhóm.',
+          [{ text: 'Đã hiểu' }]
         );
         return;
       }
 
       // Show message about transferring ownership - DO NOT allow leaving group
       Alert.alert(
-        'Leave Group',
-        'You are the group owner. You must transfer group ownership to another member before leaving the group.\n\nPlease go to the member list to select a new group owner.',
+        'Rời nhóm',
+        'Bạn đang là trưởng nhóm. Bạn cần chuyển nhượng quyền trưởng nhóm cho một thành viên khác trước khi rời khỏi nhóm.\n\nVui lòng đi tới danh sách thành viên để chọn trưởng nhóm mới.',
         [
           {
-            text: 'Cancel',
+            text: 'Hủy',
             style: 'cancel',
           },
           {
-            text: 'Go to Member List',
+            text: 'Đến danh sách thành viên',
             onPress: () => {
-              // Scroll to members section
-              // For now, just show instruction
               Alert.alert(
-                'Guide',
-                'Scroll up to the member list, tap the settings icon (gear icon) next to the member you want to transfer ownership to, then select "Owner".\n\nAfter transferring ownership, you can leave the group.'
+                'Hướng dẫn',
+                'Cuộn lên danh sách thành viên, nhấn nút cài đặt (bánh răng) bên cạnh thành viên bạn muốn chuyển quyền, sau đó chọn "Trưởng nhóm".\n\nSau khi chuyển quyền thành công, bạn sẽ có thể rời khỏi nhóm.'
               );
             },
           },
@@ -689,15 +867,15 @@ const GroupOptionsScreen = () => {
     } else {
       // Regular member leave group
       Alert.alert(
-        'Leave Group',
-        `Are you sure you want to leave the group "${group.name}"?`,
+        'Rời nhóm',
+        `Bạn có chắc chắn muốn rời khỏi nhóm "${group.name}" không?`,
         [
           {
-            text: 'Cancel',
+            text: 'Hủy',
             style: 'cancel',
           },
           {
-            text: 'Leave Group',
+            text: 'Rời nhóm',
             style: 'destructive',
             onPress: async () => {
               try {
@@ -705,12 +883,12 @@ const GroupOptionsScreen = () => {
                 
                 // Navigate back to Contacts screen
                 (navigation as any).navigate('MainApp');
-                Alert.alert('Success', 'Left the group');
+                Alert.alert('Thành công', 'Đã rời khỏi nhóm thành công!');
               } catch (error) {
                 console.error('Error leaving group:', error);
                 // Show specific error message
-                const errorMessage = error.response?.data?.message || error.message || 'Cannot leave group';
-                Alert.alert('Error', errorMessage);
+                const errorMessage = error.response?.data?.message || error.message || 'Không thể rời khỏi nhóm';
+                Alert.alert('Lỗi', errorMessage);
               }
             },
           },
@@ -719,56 +897,78 @@ const GroupOptionsScreen = () => {
     }
   };
 
-  // Render member item
-  const renderMemberItem = ({ item }: { item: any }) => {
-    // Handle different data structures
-    const memberName = item.name || item.user?.name || item.username || 'Unknown User';
-    const memberAvatar = item.avatarUrl || item.user?.avatarUrl || item.avatar;
+  // Render member row using safe inner component to handle image errors and format URLs
+  const MemberRow = ({ item }: { item: any }) => {
+    const memberName = item.name || item.user?.name || item.username || 'Người dùng ẩn danh';
+    const rawAvatar = item.avatarUrl || item.user?.avatarUrl || item.avatar;
+    const hasAvatar = !!rawAvatar && rawAvatar !== 'null' && rawAvatar !== 'undefined' && rawAvatar !== '';
+    const memberAvatar = hasAvatar ? formatImageUrl(rawAvatar) : getMediumAvatar(memberName);
     const memberId = item.id || item.user?.id || item.userId;
-    const memberUuid = item.user?.id || item.uuid || item.id; // user.id is actually UUID per backend serialization
+    const memberUuid = item.user?.id || item.uuid || item.id;
     const memberRole = item.role || 'member';
 
-    // Get current user ID from top level
     const currentUserId = currentUser?.uuid || currentUser?.id;
     const isCurrentUser = memberId === currentUserId;
     const isOwner = memberRole === 'owner';
     const isAdmin = memberRole === 'admin';
 
-    // Debug rendering logic
-    const shouldShowSettings = !isCurrentUser && isCurrentUserOwner(); // Only owner can change roles
-    const shouldShowRemove = !isCurrentUser && !isOwner && (isCurrentUserOwner() || (isCurrentUserAdmin() && !isAdmin)); // Owner can remove anyone, admin can only remove regular members
+    const shouldShowSettings = !isCurrentUser && isCurrentUserOwner();
+    const shouldShowRemove = !isCurrentUser && !isOwner && (isCurrentUserOwner() || (isCurrentUserAdmin() && !isAdmin));
+
+    const [imgUri, setImgUri] = useState(memberAvatar);
+
+    // Sync image URI when memberAvatar changes
+    useEffect(() => {
+      setImgUri(memberAvatar);
+    }, [memberAvatar]);
+
+    const getRoleLabel = (role: string) => {
+      switch (role) {
+        case 'owner':
+          return 'Trưởng nhóm';
+        case 'admin':
+          return 'Phó nhóm';
+        case 'member':
+        default:
+          return 'Thành viên';
+      }
+    };
 
     return (
       <View className="flex-row items-center p-3 bg-white border-b border-gray-50">
         <Image
-          source={{ uri: memberAvatar || getMediumAvatar(memberName) }}
+          source={{ uri: imgUri }}
           className="w-12 h-12 rounded-full mr-3"
+          onError={() => {
+            if (imgUri !== getMediumAvatar(memberName)) {
+              setImgUri(getMediumAvatar(memberName));
+            }
+          }}
         />
         <View className="flex-1">
           <Text className="font-semibold text-gray-800">{memberName}</Text>
-          <Text className="text-sm text-gray-500 capitalize">{memberRole}</Text>
+          <Text className="text-sm text-gray-500">{getRoleLabel(memberRole)}</Text>
         </View>
         <View className="flex-row items-center">
-          {/* Only show settings icon if current user is owner and not current user */}
           {shouldShowSettings && (
             <TouchableOpacity 
               className="p-2"
               onPress={() => {
                 Alert.alert(
-                  'Update Role',
-                  'Select new role:',
+                  'Cập nhật vai trò',
+                  'Chọn vai trò mới cho thành viên:',
                   [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Hủy', style: 'cancel' },
                     { 
-                      text: 'Owner', 
+                      text: 'Trưởng nhóm', 
                       onPress: () => handleUpdateRole(memberId, 'owner', memberUuid) 
                     },
                     { 
-                      text: 'Admin', 
+                      text: 'Phó nhóm', 
                       onPress: () => handleUpdateRole(memberId, 'admin') 
                     },
                     { 
-                      text: 'Member', 
+                      text: 'Thành viên', 
                       onPress: () => handleUpdateRole(memberId, 'member') 
                     }
                   ]
@@ -778,7 +978,6 @@ const GroupOptionsScreen = () => {
               <Ionicons name="settings-outline" size={20} color="#666" />
             </TouchableOpacity>
           )}
-          {/* Only show remove icon if shouldShowRemove */}
           {shouldShowRemove && (
             <TouchableOpacity 
               className="p-2"
@@ -790,6 +989,10 @@ const GroupOptionsScreen = () => {
         </View>
       </View>
     );
+  };
+
+  const renderMemberItem = ({ item }: { item: any }) => {
+    return <MemberRow item={item} />;
   };
 
   const renderActionButton = (icon: any, label: string, onPress: () => void, active = false) => (
@@ -909,6 +1112,132 @@ const GroupOptionsScreen = () => {
     </TouchableOpacity>
   );
 
+  const renderToggleRow = (icon: string, label: string, description: string | null, value: boolean, onValueChange: (val: boolean) => void, disabled = false) => (
+    <View className="flex-row items-center justify-between py-3 border-b border-gray-100" key={label}>
+      <View className="flex-row items-center flex-1 mr-4">
+        <View className="mr-3 h-9 w-9 items-center justify-center rounded-full bg-blue-50">
+          <Ionicons name={icon as any} size={18} color="#0068FF" />
+        </View>
+        <View className="flex-1">
+          <Text className={`text-sm font-semibold ${disabled ? "text-gray-400" : "text-gray-800"}`}>{label}</Text>
+          {description ? <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{description}</Text> : null}
+        </View>
+      </View>
+      <TouchableOpacity 
+        onPress={() => !disabled && onValueChange(!value)} 
+        disabled={disabled}
+        className={`w-11 h-6 rounded-full p-0.5 justify-center ${value ? "bg-blue-500" : "bg-gray-300"} ${disabled ? "opacity-50" : ""}`}
+      >
+        <View className={`w-5 h-5 rounded-full bg-white shadow-sm ${value ? "align-self-end ml-auto" : "align-self-start mr-auto"}`} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderGroupSettingsSection = () => {
+    const isUserAdmin = isCurrentUserOwner() || isCurrentUserAdmin();
+    const inviteCode = currentGroup?.inviteCode || group.inviteCode || "";
+    const inviteLink = inviteCode ? `${API_BASE_URL.replace("/api/v1", "")}/join/${inviteCode}` : "";
+    
+    return (
+      <View className="bg-white mb-2" key="group-settings-section">
+        {renderSectionHeader(isUserAdmin ? "Quản lý cài đặt nhóm" : "Thông tin mời tham gia nhóm", null, showGroupSettings, () => setShowGroupSettings((value) => !value))}
+        {showGroupSettings ? (
+          <View className="px-4 pb-4">
+            
+            {/* Invite link + QR code */}
+            {!!inviteCode ? (
+              <View className="items-center bg-gray-50 rounded-2xl p-4 mb-4 border border-gray-100">
+                <Image
+                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(inviteLink)}` }}
+                  className="w-32 h-32 bg-white p-1 rounded-lg border border-gray-200"
+                  resizeMode="contain"
+                />
+                <Text className="text-[10px] uppercase tracking-wider text-gray-400 mt-2">Mã tham gia</Text>
+                <Text className="font-mono text-xl font-bold tracking-widest text-blue-600 mt-1">
+                  {inviteCode}
+                </Text>
+                
+                <View className="flex-row items-center border border-gray-200 bg-white rounded-lg px-2 py-1.5 w-full mt-3">
+                  <Ionicons name="link-outline" size={14} color="#6B7280" className="mr-2" />
+                  <Text className="text-xs text-gray-400 flex-1 truncate" numberOfLines={1}>
+                    {inviteLink}
+                  </Text>
+                </View>
+                
+                <View className="flex-row mt-3 gap-2 w-full justify-between">
+                  <TouchableOpacity 
+                    className="bg-blue-500 rounded-full py-2.5 flex-row items-center justify-center flex-1 mr-2"
+                    onPress={handleCopyInviteLink}
+                  >
+                    <Ionicons name="copy-outline" size={14} color="white" className="mr-1.5" />
+                    <Text className="text-xs font-semibold text-white">Sao chép</Text>
+                  </TouchableOpacity>
+                  
+                  {isUserAdmin && (
+                    <TouchableOpacity 
+                      className={`bg-gray-100 rounded-full py-2.5 flex-row items-center justify-center flex-1 ${rotatingCode ? "opacity-50" : ""}`}
+                      onPress={handleRegenerateInviteCode}
+                      disabled={rotatingCode}
+                    >
+                      {rotatingCode ? (
+                        <ActivityIndicator size="small" color="#4B5563" />
+                      ) : (
+                        <>
+                          <Ionicons name="sync-outline" size={14} color="#4B5563" className="mr-1.5" />
+                          <Text className="text-xs font-semibold text-gray-700">Mã mới</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ) : null}
+
+            {isUserAdmin && (
+              <>
+                {/* Quyền thành viên */}
+                <Text className="text-xs font-bold uppercase tracking-wide text-gray-400 mt-2 mb-1">Quyền thành viên</Text>
+                {renderToggleRow("chatbox-ellipses-outline", "Gửi tin nhắn", !sendMessagesEnabled ? "Chỉ trưởng/phó nhóm có thể gửi tin." : "Mọi thành viên đều có thể gửi tin.", sendMessagesEnabled, handleToggleSendMessages, !isUserAdmin)}
+
+                {/* Tuỳ chọn quản trị */}
+                <Text className="text-xs font-bold uppercase tracking-wide text-gray-400 mt-4 mb-1">Tuỳ chọn quản trị</Text>
+                {renderToggleRow("checkmark-done-circle-outline", "Phê duyệt thành viên mới", "Yêu cầu admin duyệt trước khi vào nhóm.", approveMembers, handleToggleApproveMembers, !isUserAdmin)}
+
+                {/* Yêu cầu phê duyệt Button */}
+                {approveMembers && (
+                  <TouchableOpacity 
+                    className="flex-row items-center border border-blue-100 bg-blue-50/40 rounded-xl px-4 py-3 mt-3"
+                    onPress={() => {
+                      loadJoinRequests();
+                      setShowJoinRequestsModal(true);
+                    }}
+                  >
+                    <View className="mr-3 h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                      <Ionicons name="people-outline" size={20} color="#0068FF" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-semibold text-gray-800">Yêu cầu chờ duyệt</Text>
+                      <Text className="mt-0.5 text-xs text-gray-500">
+                        {joinRequests.length > 0 ? `Có ${joinRequests.length} yêu cầu chờ phê duyệt` : "Không có yêu cầu nào"}
+                      </Text>
+                    </View>
+                    {joinRequests.length > 0 && (
+                      <View className="bg-red-500 rounded-full px-2 py-0.5 mr-2">
+                        <Text className="text-white text-[10px] font-bold">{joinRequests.length}</Text>
+                      </View>
+                    )}
+                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       <StatusBar barStyle="light-content" backgroundColor="#0068FF" />
@@ -922,7 +1251,7 @@ const GroupOptionsScreen = () => {
           >
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
-          <Text className="text-white text-xl font-semibold flex-1">Group options</Text>
+          <Text className="text-white text-xl font-semibold flex-1">Tùy chọn nhóm</Text>
         </View>
       </View>
 
@@ -939,14 +1268,14 @@ const GroupOptionsScreen = () => {
                 <Image
                   source={{ 
                     uri: currentGroup?.avatarUrl 
-                      ? `${currentGroup.avatarUrl}?t=${avatarTimestamp}` 
+                      ? `${formatImageUrl(currentGroup.avatarUrl)}?t=${avatarTimestamp}` 
                       : group.avatarUrl 
-                        ? `${group.avatarUrl}?t=${avatarTimestamp}` 
+                        ? `${formatImageUrl(group.avatarUrl)}?t=${avatarTimestamp}` 
                         : getLargeAvatar(currentGroup?.name || group.name)
                   }}
                   className="w-20 h-20 rounded-full mb-3"
                 />
-                {(isCurrentUserOwner() || isCurrentUserAdmin()) && (
+                {isCurrentUserOwner() && (
                   <View className="absolute bottom-2 right-0 bg-blue-500 rounded-full p-1">
                     <Ionicons name="camera-outline" size={14} color="white" />
                   </View>
@@ -958,12 +1287,21 @@ const GroupOptionsScreen = () => {
                 )}
               </View>
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">{currentGroup?.name || group.name}</Text>
+            <View className="flex-row items-center justify-center mt-2 px-6">
+              <Text className="text-lg font-bold text-gray-800 mr-2 text-center" numberOfLines={2}>
+                {currentGroup?.name || group.name}
+              </Text>
+              {isCurrentUserOwner() && (
+                <TouchableOpacity onPress={handleEditGroupName} className="p-1 bg-blue-50 rounded-full">
+                  <Ionicons name="create-outline" size={15} color="#0068FF" />
+                </TouchableOpacity>
+              )}
+            </View>
             {!!(currentGroup?.description || group.description) && (
               <Text className="text-sm text-gray-500 text-center mt-1">{currentGroup?.description || group.description}</Text>
             )}
             <Text className="text-xs text-gray-400 mt-2">
-              {groupMembers.length} members
+              {groupMembers.length} thành viên
             </Text>
           </View>
 
@@ -973,18 +1311,21 @@ const GroupOptionsScreen = () => {
             {renderActionButton("alarm-outline", "Nhắc hẹn", () => setShowReminderModal(true), reminders.length > 0)}
             {renderActionButton("search-outline", "Tìm tin nhắn", () => setShowSearchModal(true), false)}
             {renderActionButton("person-add-outline", "Thêm TV", () => setShowAddMembersModal(true), false)}
+            {(isCurrentUserOwner() || isCurrentUserAdmin()) && renderActionButton("settings-outline", "Quản lý nhóm", () => {
+              setShowGroupSettings(prev => !prev);
+            }, showGroupSettings)}
           </View>
         </View>
 
         {/* Members Section */}
         <View className="bg-white mb-2">
           <View className="px-4 py-3 border-b border-gray-100">
-            <Text className="font-semibold text-gray-800">Members ({groupMembers.length})</Text>
+            <Text className="font-semibold text-gray-800">Thành viên ({groupMembers.length})</Text>
           </View>
           
           {loading ? (
             <View className="p-4 items-center">
-              <Text className="text-gray-500">Loading...</Text>
+              <Text className="text-gray-500">Đang tải...</Text>
             </View>
           ) : (
             <FlatList
@@ -1034,10 +1375,13 @@ const GroupOptionsScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Group Management Section */}
+        {renderGroupSettingsSection()}
+
         {/* Danger Zone */}
         <View className="bg-white mb-2">
           <View className="px-4 py-3 border-b border-gray-100">
-            <Text className="font-semibold text-gray-800">Danger Zone</Text>
+            <Text className="font-semibold text-gray-800">Khu vực nguy hiểm</Text>
           </View>
           
           {/* Delete group option for owners/admins */}
@@ -1047,7 +1391,7 @@ const GroupOptionsScreen = () => {
               onPress={handleDeleteGroup}
             >
               <Ionicons name="trash-outline" size={20} color="#EF4444" className="mr-2" />
-              <Text className="text-red-600 font-medium">Disband Group</Text>
+              <Text className="text-red-600 font-medium">Giải tán nhóm</Text>
             </TouchableOpacity>
           )}
           
@@ -1057,7 +1401,7 @@ const GroupOptionsScreen = () => {
             onPress={handleLeaveGroup}
           >
             <Ionicons name="exit-outline" size={20} color="#EF4444" className="mr-2" />
-            <Text className="text-red-600 font-medium">Leave Group</Text>
+            <Text className="text-red-600 font-medium">Rời nhóm</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -1075,15 +1419,15 @@ const GroupOptionsScreen = () => {
           {/* Header */}
           <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
             <TouchableOpacity onPress={() => setShowAddMembersModal(false)}>
-              <Text className="text-blue-500 font-medium">Cancel</Text>
+              <Text className="text-blue-500 font-medium">Hủy</Text>
             </TouchableOpacity>
-            <Text className="font-semibold text-lg">Add Members</Text>
+            <Text className="font-semibold text-lg">Thêm thành viên</Text>
             <TouchableOpacity 
               onPress={handleAddMembers}
               disabled={selectedFriendsToAdd.length === 0 || addingMembers}
             >
               <Text className={`font-medium ${selectedFriendsToAdd.length === 0 || addingMembers ? 'text-gray-400' : 'text-blue-500'}`}>
-                {addingMembers ? 'Adding...' : `Add (${selectedFriendsToAdd.length})`}
+                {addingMembers ? 'Đang thêm...' : `Thêm (${selectedFriendsToAdd.length})`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1115,8 +1459,8 @@ const GroupOptionsScreen = () => {
             ) : (
               <View className="items-center justify-center py-12">
                 <Ionicons name="people-outline" size={48} color="#9CA3AF" />
-                <Text className="text-gray-500 mt-3 text-center">No friends to add</Text>
-                <Text className="text-gray-400 text-sm mt-1 text-center px-4">All friends are already in the group</Text>
+                <Text className="text-gray-500 mt-3 text-center">Không có bạn bè khả dụng</Text>
+                <Text className="text-gray-400 text-sm mt-1 text-center px-4">Tất cả bạn bè đã tham gia vào nhóm chat này</Text>
               </View>
             )}
           </ScrollView>
@@ -1225,7 +1569,7 @@ const GroupOptionsScreen = () => {
                     className="mb-2 rounded-2xl bg-gray-50 p-4"
                     onPress={() => {
                       setShowSearchModal(false);
-                      navigation.navigate("Chat", {
+                      (navigation as any).navigate("Chat", {
                         user: currentGroup || group,
                         conversationId: group.id,
                       });
@@ -1244,6 +1588,132 @@ const GroupOptionsScreen = () => {
                 ))
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Group Name Modal */}
+      <Modal visible={showEditNameModal} transparent animationType="fade" onRequestClose={() => setShowEditNameModal(false)}>
+        <View className="flex-1 items-center justify-center bg-black/50 px-5">
+          <View className="w-full rounded-2xl bg-white p-5 max-w-sm">
+            <View className="mb-4 flex-row items-center justify-between border-b border-gray-100 pb-2">
+              <Text className="text-lg font-bold text-gray-900">Đổi tên nhóm</Text>
+              <TouchableOpacity onPress={() => setShowEditNameModal(false)}>
+                <Ionicons name="close" size={22} color="#4B5563" />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              placeholder="Nhập tên nhóm mới"
+              className="mb-4 rounded-xl border border-gray-200 px-4 py-3 text-gray-900 text-base"
+              maxLength={100}
+              autoFocus
+            />
+            <View className="flex-row gap-2 justify-end">
+              <TouchableOpacity 
+                className="rounded-xl px-4 py-3 bg-gray-100 mr-2 flex-1" 
+                onPress={() => setShowEditNameModal(false)}
+              >
+                <Text className="text-center font-semibold text-gray-700 text-sm">Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                className={`rounded-xl px-4 py-3 flex-1 ${newGroupName.trim() && !updatingName ? "bg-blue-500" : "bg-blue-300"}`} 
+                onPress={handleSaveGroupName} 
+                disabled={!newGroupName.trim() || updatingName}
+              >
+                {updatingName ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <Text className="text-center font-semibold text-white text-sm">Cập nhật</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Join Requests Modal */}
+      <Modal
+        visible={showJoinRequestsModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowJoinRequestsModal(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/50">
+          <View className="bg-white rounded-2xl w-11/12 max-w-sm max-h-[500px] overflow-hidden">
+            <SafeAreaView edges={["bottom"]}>
+              {/* Header */}
+              <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+                <TouchableOpacity onPress={() => setShowJoinRequestsModal(false)}>
+                  <Ionicons name="arrow-back" size={24} color="#0068FF" />
+                </TouchableOpacity>
+                <Text className="font-bold text-lg text-gray-800">Yêu cầu phê duyệt</Text>
+                <TouchableOpacity onPress={loadJoinRequests} disabled={loadingRequests}>
+                  <Ionicons name="refresh-outline" size={20} color="#0068FF" className={loadingRequests ? "opacity-50" : ""} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Requests List */}
+              <ScrollView className="max-h-[380px] p-3">
+                {loadingRequests ? (
+                  <View className="items-center justify-center py-12">
+                    <ActivityIndicator size="large" color="#0068FF" />
+                    <Text className="text-gray-500 mt-3">Đang tải danh sách...</Text>
+                  </View>
+                ) : joinRequests.length > 0 ? (
+                  joinRequests.map((request) => {
+                    const user = request.user || request.sender;
+                    if (!user) return null;
+                    const name = user.fullName || user.full_name || user.name || "Người dùng ẩn danh";
+                    const email = user.email || "";
+                    const avatar = user.avatarUrl || user.avatar_url || user.avatar;
+                    const hasAvatar = !!avatar && avatar !== 'null' && avatar !== 'undefined' && avatar !== '';
+                    const imgUri = hasAvatar ? formatImageUrl(avatar) : getMediumAvatar(name);
+
+                    return (
+                      <View 
+                        key={request.id} 
+                        className="flex-row items-center justify-between p-3 bg-gray-50 rounded-xl mb-2 border border-gray-100"
+                      >
+                        <Image
+                          source={{ uri: imgUri }}
+                          className="w-11 h-11 rounded-full mr-3"
+                        />
+                        <View className="flex-1 min-w-0 mr-2">
+                          <Text className="font-semibold text-gray-800 truncate">{name}</Text>
+                          <Text className="text-xs text-gray-500 truncate">{email || "Gửi yêu cầu tham gia"}</Text>
+                        </View>
+                        <View className="flex-row items-center gap-1.5">
+                          <TouchableOpacity 
+                            onPress={() => handleRejectRequest(request.id)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center bg-red-50 hover:bg-red-100"
+                          >
+                            <Ionicons name="close" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            onPress={() => handleApproveRequest(request.id)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-500 hover:bg-blue-600"
+                          >
+                            <Ionicons name="checkmark" size={16} color="white" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View className="items-center justify-center py-12">
+                    <View className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <Ionicons name="checkmark-circle-outline" size={32} color="#10B981" />
+                    </View>
+                    <Text className="text-gray-800 font-semibold text-sm">Không có yêu cầu chờ duyệt</Text>
+                    <Text className="text-gray-400 text-xs mt-1 text-center px-4">
+                      Tất cả các thành viên mới đã được phê duyệt.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </SafeAreaView>
           </View>
         </View>
       </Modal>

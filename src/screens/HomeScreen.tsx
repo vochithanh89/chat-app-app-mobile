@@ -10,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Vibration,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,6 +26,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import AvatarComponent from "../components/common/AvatarComponent";
 import { useCall } from "../contexts/CallContext";
+import { socketService } from "../services/socketService";
 
 type RootStackParamList = {
   Chat: { user: any; conversationId?: string };
@@ -41,10 +43,13 @@ const getNicknameKey = (conversationId?: string | null, userId?: string | null) 
 const getClearedAtKey = (conversationId?: string | null) =>
   conversationId ? `chat:options:${conversationId}:clearedAt` : null;
 
+import { useTheme } from "../contexts/ThemeContext";
+
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { user } = useAuth();
   const { ongoingGroupCalls } = useCall();
+  const { isDarkMode, colors } = useTheme();
   const currentUserId = user?.uuid || user?.id || null;
   const [activeTab, setActiveTab] = useState<"messages" | "groups">("messages");
   const [searchText, setSearchText] = useState("");
@@ -136,6 +141,41 @@ const HomeScreen = () => {
     useCallback(() => {
       loadConversations();
       loadFriends();
+
+      const unsubNewMsg = socketService.on("message:new", async (msgData: any) => {
+        loadConversations(true);
+        try {
+          const storedNotif = await AsyncStorage.getItem("settings:notification");
+          if (storedNotif !== "false") {
+            const senderId = msgData?.sender_id || msgData?.sender?.id || msgData?.sender?.uuid || null;
+            if (senderId && String(senderId) !== String(currentUserId)) {
+              Vibration.vibrate(500);
+            }
+          }
+        } catch (error) {
+          console.error("Lỗi rung trong HomeScreen:", error);
+        }
+      });
+      const unsubJoined = socketService.on("conversation:joined", () => {
+        loadConversations(true);
+      });
+      const unsubRead = socketService.on("conversation:read", () => {
+        loadConversations(true);
+      });
+      const unsubRemoved = socketService.on("conversation:removed", () => {
+        loadConversations(true);
+      });
+      const unsubPresence = socketService.on("presence:changed", () => {
+        loadConversations(true);
+      });
+
+      return () => {
+        unsubNewMsg();
+        unsubJoined();
+        unsubRead();
+        unsubRemoved();
+        unsubPresence();
+      };
     }, [loadConversations])
   );
 
@@ -225,7 +265,7 @@ const HomeScreen = () => {
   const renderConversation = (item: any) => (
     <TouchableOpacity
       key={item.id}
-      className="flex-row items-center px-4 py-4 bg-white border-b border-gray-100"
+      className={`flex-row items-center px-4 py-4 border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}
       onPress={() => openConversation(item)}
     >
       <View className="relative mr-3">
@@ -236,22 +276,22 @@ const HomeScreen = () => {
           isOnline={item.isOnline}
           name={item.name}
         />
-        {item.isGroup && (
+        {item.isGroup ? (
           <View className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-1">
             <Ionicons name="people" size={9} color="white" />
           </View>
-        )}
+        ) : null}
       </View>
 
       <View className="flex-1">
         <View className="flex-row items-center justify-between mb-1">
           <Text
-            className="text-base font-semibold text-gray-900 flex-1"
+            className={`text-base font-semibold flex-1 ${isDarkMode ? "text-white" : "text-gray-900"}`}
             numberOfLines={1}
           >
             {item.name}
           </Text>
-          <Text className="text-xs text-gray-500 ml-2">
+          <Text className={`text-xs ml-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
             {item.time || ""}
           </Text>
         </View>
@@ -262,34 +302,34 @@ const HomeScreen = () => {
             <Text className="text-sm text-green-600 font-medium">Cuộc gọi đang diễn ra</Text>
           </View>
         ) : (
-          <Text className="text-sm text-gray-500" numberOfLines={1}>
-            {item.lastMsg || "No messages yet"}
+          <Text className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} numberOfLines={1}>
+            {item.lastMsg || "Chưa có tin nhắn"}
           </Text>
         )}
       </View>
 
-      {!!item.unread && (
+      {item.unread ? (
         <View className="bg-blue-500 min-w-[20px] h-5 rounded-full items-center justify-center ml-2 px-1">
           <Text className="text-[10px] font-bold text-white">
             {item.unread > 99 ? "99+" : item.unread}
           </Text>
         </View>
-      )}
+      ) : null}
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView className={`flex-1 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}>
       {/* Search Bar */}
       <View className="bg-blue-500 px-4 py-4 flex-row items-center">
-        <View className="bg-white rounded-full px-4 py-3 flex-row items-center flex-1">
+        <View className={`rounded-full px-4 py-3 flex-row items-center flex-1 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
           <Ionicons name="search" size={18} color="#0068FF" />
           <TextInput
-            placeholder="Search conversations..."
-            placeholderTextColor="#9CA3AF"
+            placeholder="Tìm kiếm cuộc trò chuyện..."
+            placeholderTextColor={isDarkMode ? "#9CA3AF" : "#9CA3AF"}
             value={searchText}
             onChangeText={setSearchText}
-            className="flex-1 text-sm text-gray-700 ml-3"
+            className={`flex-1 text-sm ml-3 ${isDarkMode ? "text-white" : "text-gray-700"}`}
           />
         </View>
         <TouchableOpacity 
@@ -301,7 +341,7 @@ const HomeScreen = () => {
       </View>
 
       {/* Tabs */}
-      <View className="bg-white border-b border-gray-200">
+      <View className={`border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
         <View className="flex-row">
           <TouchableOpacity
             className={`flex-1 py-3 ${
@@ -311,10 +351,10 @@ const HomeScreen = () => {
           >
             <Text
               className={`text-center font-medium ${
-                activeTab === "messages" ? "text-blue-500" : "text-gray-500"
+                activeTab === "messages" ? "text-blue-500" : isDarkMode ? "text-gray-400" : "text-gray-500"
               }`}
             >
-              Direct Messages
+              Trò chuyện
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -325,10 +365,10 @@ const HomeScreen = () => {
           >
             <Text
               className={`text-center font-medium ${
-                activeTab === "groups" ? "text-blue-500" : "text-gray-500"
+                activeTab === "groups" ? "text-blue-500" : isDarkMode ? "text-gray-400" : "text-gray-500"
               }`}
             >
-              Group Chats
+              Nhóm
             </Text>
           </TouchableOpacity>
         </View>
@@ -353,32 +393,32 @@ const HomeScreen = () => {
           }
         >
           {/* Create Group Button - Only in Group tab */}
-          {activeTab === "groups" && (
+          {activeTab === "groups" ? (
             <TouchableOpacity
-              className="flex-row items-center p-4 bg-white border-b border-gray-50"
+              className={`flex-row items-center p-4 border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-50"}`}
               onPress={() => setShowCreateGroupModal(true)}
             >
               <View className="w-12 h-12 rounded-full bg-blue-500 justify-center items-center mr-3">
                 <Ionicons name="add" size={20} color="white" />
               </View>
               <View className="flex-1">
-                <Text className="font-semibold text-base text-gray-900">
-                  Create Group
+                <Text className={`font-semibold text-base ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+                  Tạo nhóm mới
                 </Text>
-                <Text className="text-sm text-gray-500">
-                  Start a group conversation
+                <Text className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Bắt đầu cuộc trò chuyện nhóm
                 </Text>
               </View>
             </TouchableOpacity>
-          )}
+          ) : null}
 
           {filteredConversations.length === 0 ? (
             <View className="items-center justify-center py-20">
               <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
-              <Text className="text-gray-500 mt-3">
+              <Text className={`mt-3 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                 {activeTab === "messages"
-                  ? "No direct conversations yet"
-                  : "No group conversations yet"}
+                  ? "Chưa có cuộc trò chuyện cá nhân nào"
+                  : "Chưa có cuộc trò chuyện nhóm nào"}
               </Text>
             </View>
           ) : (
@@ -395,15 +435,15 @@ const HomeScreen = () => {
         onRequestClose={() => setShowCreateGroupModal(false)}
       >
         <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-3xl">
+          <View className={`rounded-t-3xl ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
             {/* Header */}
-            <View className="flex-row items-center justify-between p-4 border-b border-gray-200 pt-8">
+            <View className={`flex-row items-center justify-between p-4 border-b pt-8 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
               <TouchableOpacity
                 onPress={() => setShowCreateGroupModal(false)}
               >
                 <Text className="text-blue-500 font-medium">Hủy</Text>
               </TouchableOpacity>
-              <Text className="font-semibold text-lg">Tạo nhóm mới</Text>
+              <Text className={`font-semibold text-lg ${isDarkMode ? "text-white" : "text-gray-900"}`}>Tạo nhóm mới</Text>
               <TouchableOpacity
                 onPress={handleCreateGroup}
                 disabled={creatingGroup || !groupName.trim()}
@@ -411,7 +451,7 @@ const HomeScreen = () => {
                 <Text
                   className={`font-medium ${
                     creatingGroup || !groupName.trim()
-                      ? "text-gray-300"
+                      ? "text-gray-500"
                       : "text-blue-500"
                   }`}
                 >
@@ -423,12 +463,13 @@ const HomeScreen = () => {
             <ScrollView className="p-4 pb-8">
               {/* Group Name */}
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">
+                <Text className={`font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                   Tên nhóm
                 </Text>
                 <TextInput
-                  className="border border-gray-300 rounded-lg p-3 text-gray-800"
+                  className={`border rounded-lg p-3 ${isDarkMode ? "border-gray-700 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-800"}`}
                   placeholder="Nhập tên nhóm"
+                  placeholderTextColor={isDarkMode ? "#6B7280" : "#9CA3AF"}
                   value={groupName}
                   onChangeText={setGroupName}
                   maxLength={50}
@@ -437,12 +478,13 @@ const HomeScreen = () => {
 
               {/* Group Description */}
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">
+                <Text className={`font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                   Mô tả (tùy chọn)
                 </Text>
                 <TextInput
-                  className="border border-gray-300 rounded-lg p-3 text-gray-800 h-20"
+                  className={`border rounded-lg p-3 h-20 ${isDarkMode ? "border-gray-700 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-800"}`}
                   placeholder="Nhập mô tả nhóm"
+                  placeholderTextColor={isDarkMode ? "#6B7280" : "#9CA3AF"}
                   value={groupDescription}
                   onChangeText={setGroupDescription}
                   multiline
@@ -452,14 +494,14 @@ const HomeScreen = () => {
 
               {/* Select Members */}
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">
+                <Text className={`font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                   Thêm thành viên
                 </Text>
                 {friends.length > 0 ? (
                   friends.map((friend) => (
                     <TouchableOpacity
                       key={friend.id}
-                      className="flex-row items-center p-3 border-b border-gray-100"
+                      className={`flex-row items-center p-3 border-b ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}
                       onPress={() => toggleMemberSelection(friend.id)}
                     >
                       <Image
@@ -469,7 +511,7 @@ const HomeScreen = () => {
                         className="w-10 h-10 rounded-full"
                       />
                       <View className="flex-1 ml-3">
-                        <Text className="font-medium text-gray-800">
+                        <Text className={`font-medium ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                           {friend.name}
                         </Text>
                       </View>
@@ -480,14 +522,14 @@ const HomeScreen = () => {
                             : "border-gray-300"
                         }`}
                       >
-                        {selectedMembers.includes(friend.id) && (
+                        {selectedMembers.includes(friend.id) ? (
                           <Ionicons name="checkmark" size={14} color="white" />
-                        )}
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                   ))
                 ) : (
-                  <Text className="text-gray-500 text-center py-4">
+                  <Text className={`text-center py-4 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                     Chưa có bạn bè nào để thêm vào nhóm
                   </Text>
                 )}

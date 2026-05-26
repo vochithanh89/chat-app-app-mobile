@@ -58,9 +58,9 @@ const LoginScreen = () => {
       const message =
         error.response?.data?.message ||
         error.message ||
-        "Login failed";
+        "Đăng nhập thất bại";
 
-      Alert.alert("Login Failed", message);
+      Alert.alert("Đăng nhập thất bại", message);
       console.log("Login error details:", {
         message: error.message,
         code: error.code,
@@ -78,15 +78,8 @@ const LoginScreen = () => {
           <View className="w-24 h-24 bg-blue-500 rounded-2xl justify-center items-center mb-6">
             <Ionicons name="chatbubble-ellipses" size={40} color="white" />
           </View>
-          <Text className="text-3xl font-bold text-gray-900 mb-2">Welcome Back!</Text>
-          <Text className="text-gray-500 text-center">Sign in to continue to your account</Text>
-          {__DEV__ && (
-            <View className="bg-yellow-100 rounded-xl p-3 mt-4">
-              <Text className="text-sm text-yellow-900">
-                Dev account: dangvanly270704@gmail.com / password123
-              </Text>
-            </View>
-          )}
+          <Text className="text-3xl font-bold text-gray-900 mb-2">Chào mừng trở lại!</Text>
+          <Text className="text-gray-500 text-center">Đăng nhập để tiếp tục truy cập tài khoản của bạn</Text>
         </View>
 
         {/* Input Fields */}
@@ -97,7 +90,7 @@ const LoginScreen = () => {
             <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
               <Ionicons name="mail" size={20} color="#9CA3AF" className="mr-3" />
               <TextInput
-                placeholder="Enter your email"
+                placeholder="Nhập email của bạn"
                 value={identifier}
                 onChangeText={setIdentifier}
                 className="flex-1 text-gray-900"
@@ -113,7 +106,7 @@ const LoginScreen = () => {
             <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
               <Ionicons name="lock-closed" size={20} color="#9CA3AF" className="mr-3" />
               <TextInput
-                placeholder="Enter your password"
+                placeholder="Nhập mật khẩu của bạn"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -145,14 +138,14 @@ const LoginScreen = () => {
             <TouchableOpacity>
               <Text className="text-blue-500 text-sm" onPress={() => {
                 navigation.navigate("ForgotPassword");
-              }}>Forgot Password?</Text>
+              }}>Quên mật khẩu?</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Login Button */}
         <ButtonComponent
-          title="Sign In"
+          title="Đăng nhập"
           onPress={handleLogin}
           loading={loading}
           variant="primary"
@@ -163,7 +156,7 @@ const LoginScreen = () => {
         {/* Divider */}
         <View className="flex-row items-center mb-6">
           <View className="flex-1 h-px bg-gray-300" />
-          <Text className="px-4 text-gray-500 text-sm">Or continue with</Text>
+          <Text className="px-4 text-gray-500 text-sm">Hoặc tiếp tục với</Text>
           <View className="flex-1 h-px bg-gray-300" />
         </View>
 
@@ -189,12 +182,12 @@ const LoginScreen = () => {
         {/* Sign Up Link */}
         <View className="items-center mb-8">
           <Text className="text-gray-600">
-            Don't have an account?{" "}
+            Chưa có tài khoản?{" "}
             <Text 
               className="text-blue-500 font-semibold"
               onPress={() => navigation.navigate("Register")}
             >
-              Sign Up
+              Đăng ký
             </Text>
           </Text>
         </View>

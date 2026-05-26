@@ -131,9 +131,9 @@ const RegisterScreen = () => {
           <View className="mb-6 h-24 w-24 items-center justify-center rounded-2xl bg-blue-500">
             <Ionicons name="person-add" size={40} color="white" />
           </View>
-          <Text className="mb-2 text-3xl font-bold text-gray-900">Create Account</Text>
+          <Text className="mb-2 text-3xl font-bold text-gray-900">Đăng ký tài khoản</Text>
           <Text className="text-center text-gray-500">
-            Enter your details to get started with ChatApp
+            Nhập thông tin chi tiết của bạn để bắt đầu với ChatApp
           </Text>
         </View>
 
@@ -147,11 +147,11 @@ const RegisterScreen = () => {
 
         <View className="mb-6">
           <View className="mb-4">
-            <Text className="mb-2 font-medium text-gray-700">Full Name</Text>
+            <Text className="mb-2 font-medium text-gray-700">Họ và tên</Text>
             <View className={inputBorder("name")}>
               <Ionicons name="person" size={20} color={errors.name ? "#F87171" : "#9CA3AF"} />
               <TextInput
-                placeholder="John Doe"
+                placeholder="Nguyễn Văn A"
                 value={name}
                 onChangeText={(v) => { setName(v); clearFieldError("name"); }}
                 className="ml-3 flex-1 text-gray-900"
@@ -165,7 +165,7 @@ const RegisterScreen = () => {
             <View className={inputBorder("email")}>
               <Ionicons name="mail" size={20} color={errors.email ? "#F87171" : "#9CA3AF"} />
               <TextInput
-                placeholder="john@example.com"
+                placeholder="nguyenvana@example.com"
                 value={email}
                 onChangeText={(v) => { setEmail(v); clearFieldError("email"); }}
                 className="ml-3 flex-1 text-gray-900"
@@ -177,11 +177,11 @@ const RegisterScreen = () => {
           </View>
 
           <View className="mb-4">
-            <Text className="mb-2 font-medium text-gray-700">Phone number</Text>
+            <Text className="mb-2 font-medium text-gray-700">Số điện thoại</Text>
             <View className={inputBorder("phone")}>
               <Ionicons name="call" size={20} color={errors.phone ? "#F87171" : "#9CA3AF"} />
               <TextInput
-                placeholder="+84 912 345 678"
+                placeholder="0912 345 678"
                 value={phone}
                 onChangeText={(v) => { setPhone(v); clearFieldError("phone"); }}
                 className="ml-3 flex-1 text-gray-900"
@@ -192,11 +192,11 @@ const RegisterScreen = () => {
           </View>
 
           <View className="mb-4">
-            <Text className="mb-2 font-medium text-gray-700">Password</Text>
+            <Text className="mb-2 font-medium text-gray-700">Mật khẩu</Text>
             <View className={inputBorder("password")}>
               <Ionicons name="lock-closed" size={20} color={errors.password ? "#F87171" : "#9CA3AF"} />
               <TextInput
-                placeholder="Create a password"
+                placeholder="Tạo mật khẩu"
                 value={password}
                 onChangeText={(v) => { setPassword(v); clearFieldError("password"); }}
                 secureTextEntry={!showPassword}
@@ -210,11 +210,11 @@ const RegisterScreen = () => {
           </View>
 
           <View className="mb-2">
-            <Text className="mb-2 font-medium text-gray-700">Confirm Password</Text>
+            <Text className="mb-2 font-medium text-gray-700">Xác nhận mật khẩu</Text>
             <View className={inputBorder("confirmPassword")}>
               <Ionicons name="lock-closed" size={20} color={errors.confirmPassword ? "#F87171" : "#9CA3AF"} />
               <TextInput
-                placeholder="Confirm your password"
+                placeholder="Nhập lại mật khẩu"
                 value={confirmPassword}
                 onChangeText={(v) => { setConfirmPassword(v); clearFieldError("confirmPassword"); }}
                 secureTextEntry={!showConfirmPassword}
@@ -258,7 +258,7 @@ const RegisterScreen = () => {
         </View>
 
         <ButtonComponent
-          title="Create Account"
+          title="Đăng ký"
           onPress={handleRegister}
           loading={loading}
           variant="primary"
@@ -269,9 +269,9 @@ const RegisterScreen = () => {
 
         <View className="mb-8 mt-8 items-center">
           <Text className="text-gray-600">
-            Already have an account?{" "}
+            Đã có tài khoản?{" "}
             <Text className="font-semibold text-blue-500" onPress={() => navigation.goBack()}>
-              Sign In
+              Đăng nhập
             </Text>
           </Text>
         </View>

@@ -16,21 +16,21 @@ const VerifyEmailScreen = () => {
 
   const handleVerify = async () => {
     if (!email || !otp) {
-      Alert.alert("Error", "Please enter your email and OTP code");
+      Alert.alert("Lỗi", "Vui lòng nhập email và mã OTP của bạn");
       return;
     }
 
     try {
       setLoading(true);
       await authAPI.verifyEmail(email.trim(), otp.trim());
-      Alert.alert("Success", "Email verified. You can sign in now.", [
+      Alert.alert("Thành công", "Đã xác thực email. Bây giờ bạn có thể đăng nhập.", [
         {
-          text: "Go to login",
+          text: "Đi tới đăng nhập",
           onPress: () => navigation.replace("Login"),
         },
       ]);
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Unable to verify email");
+      Alert.alert("Lỗi", error.response?.data?.message || "Không thể xác thực email");
     } finally {
       setLoading(false);
     }
@@ -38,16 +38,16 @@ const VerifyEmailScreen = () => {
 
   const handleResend = async () => {
     if (!email) {
-      Alert.alert("Error", "Please enter your email first");
+      Alert.alert("Lỗi", "Vui lòng nhập email của bạn trước");
       return;
     }
 
     try {
       setResending(true);
       await authAPI.sendOTP(email.trim());
-      Alert.alert("Success", "If the email is registered and unverified, a new code has been sent.");
+      Alert.alert("Thành công", "Nếu email đã được đăng ký và chưa xác thực, mã mới đã được gửi.");
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Unable to resend code");
+      Alert.alert("Lỗi", error.response?.data?.message || "Không thể gửi lại mã");
     } finally {
       setResending(false);
     }
@@ -60,16 +60,16 @@ const VerifyEmailScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text className="ml-4 text-xl font-semibold text-gray-900">Verify Email</Text>
+          <Text className="ml-4 text-xl font-semibold text-gray-900">Xác thực email</Text>
         </View>
 
         <View className="mb-8 items-center">
           <View className="mb-4 h-20 w-20 items-center justify-center rounded-2xl bg-blue-500">
             <Ionicons name="shield-checkmark" size={36} color="white" />
           </View>
-          <Text className="mb-2 text-lg font-semibold text-gray-900">Verify your email</Text>
+          <Text className="mb-2 text-lg font-semibold text-gray-900">Xác thực email của bạn</Text>
           <Text className="text-center text-gray-500">
-            We sent a 6-digit verification code to your email address.
+            Chúng tôi đã gửi mã xác thực gồm 6 chữ số đến địa chỉ email của bạn.
           </Text>
         </View>
 
@@ -78,7 +78,7 @@ const VerifyEmailScreen = () => {
           <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
             <Ionicons name="mail" size={20} color="#9CA3AF" />
             <TextInput
-              placeholder="john@example.com"
+              placeholder="nguyenvana@example.com"
               value={email}
               onChangeText={setEmail}
               className="ml-3 flex-1 text-gray-900"
@@ -89,7 +89,7 @@ const VerifyEmailScreen = () => {
         </View>
 
         <View className="mb-6">
-          <Text className="mb-2 font-medium text-gray-700">Verification code</Text>
+          <Text className="mb-2 font-medium text-gray-700">Mã xác thực</Text>
           <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
             <Ionicons name="key" size={20} color="#9CA3AF" />
             <TextInput
@@ -104,7 +104,7 @@ const VerifyEmailScreen = () => {
         </View>
 
         <ButtonComponent
-          title="Verify Email"
+          title="Xác thực email"
           onPress={handleVerify}
           loading={loading}
           variant="primary"
@@ -114,7 +114,7 @@ const VerifyEmailScreen = () => {
         />
 
         <ButtonComponent
-          title={resending ? "Resending..." : "Resend Code"}
+          title={resending ? "Đang gửi lại..." : "Gửi lại mã"}
           onPress={handleResend}
           loading={resending}
           variant="outline"

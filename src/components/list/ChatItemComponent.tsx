@@ -38,7 +38,7 @@ const ChatItemComponent: React.FC<ChatItemProps> = ({
         <AvatarComponent
           source={{ uri: item.avatar }}
           size="medium"
-          showOnlineStatus
+          showOnlineStatus={item.name !== "AI Assistant"}
           isOnline={!!item.online}
         />
       </View>

@@ -35,7 +35,7 @@ const AuthWrapper = ({ children }) => {
   if (loading && !isAuthenticated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading...</Text>
+        <Text>Đang tải...</Text>
       </View>
     );
   }

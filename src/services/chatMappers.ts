@@ -52,22 +52,22 @@ export const formatTimeLabel = (value?: string | null) => {
   const diffDays = Math.floor(diffHours / 24);
 
   if (diffMinutes < 1) {
-    return "Just now";
+    return "Vừa xong";
   }
 
   if (diffMinutes < 60) {
-    return `${diffMinutes}m`;
+    return `${diffMinutes} phút trước`;
   }
 
   if (diffHours < 24) {
-    return `${diffHours}h`;
+    return `${diffHours} giờ trước`;
   }
 
   if (diffDays < 7) {
-    return `${diffDays}d`;
+    return `${diffDays} ngày trước`;
   }
 
-  return date.toLocaleDateString();
+  return date.toLocaleDateString('vi-VN');
 };
 
 export const normalizeUser = (user: any = {}) => {
@@ -136,8 +136,8 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
       ...attachment,
       id: attachment?.uuid || attachment?.id,
       url: formatImageUrl(attachment?.url || attachment?.fileUrl || attachment?.file_url || null),
-      name: attachment?.fileName || attachment?.file_name || attachment?.name || "Attachment",
-      fileName: attachment?.fileName || attachment?.file_name || attachment?.name || "Attachment",
+      name: attachment?.fileName || attachment?.file_name || attachment?.name || "Tệp đính kèm",
+      fileName: attachment?.fileName || attachment?.file_name || attachment?.name || "Tệp đính kèm",
       mimeType,
       fileSize: attachment?.fileSize || attachment?.file_size || attachment?.size || 0,
       type: normalizedType,
@@ -185,9 +185,9 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
     conversationId: message?.conversationId || message?.conversation_id || null,
     text:
       message?.is_recalled
-        ? "[Message recalled]"
-        : message?.content || "",
-    content: message?.content || "",
+        ? "Tin nhắn đã được thu hồi"
+        : (message?.content === "No messages yet" ? "Chưa có tin nhắn" : (message?.content || "")),
+    content: message?.content === "No messages yet" ? "Chưa có tin nhắn" : (message?.content || ""),
     user: isMine ? "me" : "other",
     sender,
     time: (message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at) ? new Date(message.createdAt || message.created_at || message.updatedAt || message.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : formatTimeLabel(message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at),
@@ -245,7 +245,7 @@ export const normalizeConversation = (
   const name =
     conversation?.name ||
     otherMember?.name ||
-    (type === "group" ? "Unnamed group" : "Unknown user");
+    (type === "group" ? "Nhóm chưa đặt tên" : "Người dùng ẩn danh");
 
   return {
     ...conversation,
@@ -261,14 +261,19 @@ export const normalizeConversation = (
     otherUser: otherMember,
     latestMessage,
     lastMsg:
-      latestMessage?.content ||
-      conversation?.last_message?.content ||
-      "No messages yet",
+      latestMessage?.content === "No messages yet" || conversation?.last_message?.content === "No messages yet"
+        ? "Chưa có tin nhắn"
+        : (latestMessage?.content ||
+          conversation?.last_message?.content ||
+          "Chưa có tin nhắn"),
     time: formatTimeLabel(latestMessageTime),
     rawTime: latestMessageTime,
     unread: conversation?.unread_count || conversation?.unread || 0,
     online: Boolean(otherMember?.isOnline),
     isOnline: Boolean(otherMember?.isOnline),
+    commentsRestricted: Boolean(
+      conversation?.commentsRestricted ?? conversation?.comments_restricted ?? false,
+    ),
   };
 };
 

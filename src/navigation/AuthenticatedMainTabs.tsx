@@ -7,10 +7,13 @@ import ContactsScreen from '../screens/ContactsScreen';
 import ChatScreen from '../screens/ChatScreen';
 import AiScreen from '../screens/AiScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { useTheme } from '../contexts/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
 function AuthenticatedMainTabs() {
+  const { isDarkMode: darkMode, colors } = useTheme();
+
   try {
     return (
       <Tab.Navigator
@@ -34,18 +37,22 @@ function AuthenticatedMainTabs() {
           tabBarLabel: ({ focused, color }) => {
             let label: string;
             if (route.name === "Home") {
-              label = "Home";
+              label = "Trang chủ";
             } else if (route.name === "Contact") {
-              label = "Contact";
+              label = "Danh bạ";
             } else if (route.name === "AI") {
               label = "AI";
             } else {
-              label = "Settings";
+              label = "Cài đặt";
             }
             return <Text style={{ color, fontSize: 12 }}>{label}</Text>;
           },
           tabBarActiveTintColor: "#0068FF",
-          tabBarInactiveTintColor: "gray",
+          tabBarInactiveTintColor: darkMode ? "#9CA3AF" : "gray",
+          tabBarStyle: {
+            backgroundColor: colors.card,
+            borderTopColor: colors.border,
+          },
           headerShown: false,
         })}
       >

@@ -14,7 +14,7 @@ const ForgotPasswordScreen = () => {
 
   const handleSendResetEmail = async () => {
     if (!email) {
-      Alert.alert("Error", "Please enter email");
+      Alert.alert("Lỗi", "Vui lòng nhập email");
       return;
     }
 
@@ -23,11 +23,11 @@ const ForgotPasswordScreen = () => {
       await authAPI.sendOTPForgotPassword(email);
       setSent(true);
       Alert.alert(
-        "Success",
-        "If the email exists, a password reset link has been sent. Please check your inbox.",
+        "Thành công",
+        "Nếu email tồn tại, liên kết đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư của bạn.",
       );
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Failed to request password reset");
+      Alert.alert("Lỗi", error.response?.data?.message || "Không thể yêu cầu đặt lại mật khẩu");
     } finally {
       setLoading(false);
     }
@@ -40,16 +40,16 @@ const ForgotPasswordScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text className="ml-4 text-xl font-semibold text-gray-900">Forgot Password</Text>
+          <Text className="ml-4 text-xl font-semibold text-gray-900">Quên mật khẩu</Text>
         </View>
 
         <View className="mb-8 items-center">
           <View className="mb-4 h-20 w-20 items-center justify-center rounded-2xl bg-blue-500">
             <Ionicons name="mail-open" size={36} color="white" />
           </View>
-          <Text className="mb-2 text-lg font-semibold text-gray-900">Reset Password</Text>
+          <Text className="mb-2 text-lg font-semibold text-gray-900">Đặt lại mật khẩu</Text>
           <Text className="text-center text-gray-500">
-            Enter your email and we will send you a password reset link.
+            Nhập email của bạn và chúng tôi sẽ gửi liên kết đặt lại mật khẩu.
           </Text>
         </View>
 
@@ -58,7 +58,7 @@ const ForgotPasswordScreen = () => {
           <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
             <Ionicons name="mail" size={20} color="#9CA3AF" />
             <TextInput
-              placeholder="Enter your email"
+              placeholder="Nhập email của bạn"
               value={email}
               onChangeText={setEmail}
               className="ml-3 flex-1 text-gray-900"
@@ -70,7 +70,7 @@ const ForgotPasswordScreen = () => {
         </View>
 
         <ButtonComponent
-          title={sent ? "Reset Email Sent" : "Send Reset Email"}
+          title={sent ? "Đã gửi email đặt lại" : "Gửi email đặt lại"}
           icon="mail"
           onPress={handleSendResetEmail}
           loading={loading}
@@ -81,10 +81,9 @@ const ForgotPasswordScreen = () => {
         />
 
         <View className="mt-6 rounded-xl bg-gray-50 p-4">
-          <Text className="mb-2 text-sm font-medium text-gray-900">Note</Text>
+          <Text className="mb-2 text-sm font-medium text-gray-900">Lưu ý</Text>
           <Text className="text-xs text-gray-600">
-            The backend now sends a reset link by email. Open that link to complete the password
-            change.
+            Hệ thống sẽ gửi liên kết đặt lại mật khẩu qua email. Mở liên kết đó để hoàn tất thay đổi mật khẩu.
           </Text>
         </View>
       </ScrollView>

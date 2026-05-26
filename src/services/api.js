@@ -390,6 +390,12 @@ export const userAPI = {
     return response.data;
   },
 
+  // Cập nhật cài đặt chế độ riêng tư
+  updatePrivacySettings: async (isPrivatePresence) => {
+    const response = await api.put("/api/v1/user/privacy", { isPrivatePresence });
+    return response.data;
+  },
+
   // Đổi mật khẩu
   changePassword: async (passwordData) => {
     const dataWithDevice = {
@@ -608,26 +614,110 @@ export const conversationAPI = {
     return response.data;
   },
 
-  // PUT /api/v1/conversations/:id/avatar - Cập nhật avatar nhóm
-  updateGroupAvatar: async (conversationId, imageData) => {
-    const response = await api.put(`/api/v1/conversations/${conversationId}/avatar`, imageData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+  // PUT /api/v1/conversations/:id/settings - Cập nhật cài đặt/thông tin nhóm
+  updateSettings: async (conversationId, settingsData) => {
+    const response = await api.put(`/api/v1/conversations/${conversationId}/settings`, settingsData);
     return response.data;
+  },
+
+  // PUT /api/v1/conversations/:id/avatar - Cập nhật avatar nhóm (sử dụng fetch nguyên bản cho React Native để tránh lỗi boundary)
+  updateGroupAvatar: async (conversationId, imageInput) => {
+    const formData = new FormData();
+    if (Platform.OS === "web") {
+      if (imageInput instanceof File) {
+        formData.append("avatar", imageInput, imageInput.name || "avatar.jpg");
+      } else if (imageInput instanceof Blob) {
+        formData.append("avatar", imageInput, "avatar.jpg");
+      } else if (imageInput?.file instanceof File) {
+        formData.append("avatar", imageInput.file, imageInput.file.name || "avatar.jpg");
+      } else if (typeof imageInput === "string" || imageInput?.uri) {
+        const blobResponse = await fetch(typeof imageInput === "string" ? imageInput : imageInput.uri);
+        const blob = await blobResponse.blob();
+        formData.append("avatar", blob, imageInput?.fileName || "avatar.jpg");
+      } else {
+        throw new Error("No browser avatar payload available for upload");
+      }
+    } else {
+      const imageUri = typeof imageInput === "string" ? imageInput : imageInput?.uri;
+      if (!imageUri) {
+        throw new Error("No avatar uri available for upload");
+      }
+      formData.append("avatar", {
+        uri: imageUri,
+        type: imageInput?.mimeType || imageInput?.type || "image/jpeg",
+        name: imageInput?.fileName || imageInput?.name || "avatar.jpg",
+      });
+    }
+
+    const token = await tokenStorage.getItem("accessToken");
+    const response = await fetch(`${API_BASE_URL}/api/v1/conversations/${conversationId}/avatar`, {
+      method: "PUT",
+      headers: {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const error = new Error(data?.message || data || "Failed to upload group avatar");
+      error.response = { status: response.status, data };
+      throw error;
+    }
+
+    return data;
   },
 
   // POST /api/v1/conversations/:id/read - Đánh dấu đã đọc
   markAsRead: async (conversationId) => {
+    try {
+      const storedPrivate = await AsyncStorage.getItem("settings:private");
+      if (storedPrivate === "true") {
+        return { success: true, message: "Privacy mode active, markAsRead skipped" };
+      }
+    } catch (e) {
+      console.warn("Lỗi đọc settings:private trong markAsRead:", e);
+    }
     const response = await api.post(`/api/v1/conversations/${conversationId}/read`);
     return response.data;
   },
   
   markRead: async (conversationId, lastMessageId = null) => {
+    try {
+      const storedPrivate = await AsyncStorage.getItem("settings:private");
+      if (storedPrivate === "true") {
+        return { success: true, message: "Privacy mode active, markRead skipped" };
+      }
+    } catch (e) {
+      console.warn("Lỗi đọc settings:private trong markRead:", e);
+    }
     const response = await api.post(`/api/v1/conversations/${conversationId}/read`, {
       last_message_id: lastMessageId,
     });
+    return response.data;
+  },
+
+  regenerateInviteCode: async (conversationId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/invite-code/regenerate`);
+    return response.data;
+  },
+
+  getJoinRequests: async (conversationId) => {
+    const response = await api.get(`/api/v1/conversations/${conversationId}/join-requests`);
+    return response.data;
+  },
+
+  approveJoinRequest: async (conversationId, requestId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/join-requests/${requestId}/approve`, {});
+    return response.data;
+  },
+
+  rejectJoinRequest: async (conversationId, requestId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/join-requests/${requestId}/reject`, {});
     return response.data;
   },
 };

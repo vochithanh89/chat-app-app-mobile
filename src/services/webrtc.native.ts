@@ -9,7 +9,14 @@ type WebRTCModule = {
 
 const loadWebRTC = (): WebRTCModule => {
   try {
-    return require("react-native-webrtc");
+    const webrtc = require("react-native-webrtc");
+    try {
+      const debug = require("debug");
+      debug.disable();
+    } catch (debugError) {
+      // Ignore if debug package is not resolvable
+    }
+    return webrtc;
   } catch (error: any) {
     console.warn(
       "react-native-webrtc native module is not available. Use a custom Expo dev build to enable calls.",

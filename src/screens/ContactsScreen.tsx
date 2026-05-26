@@ -11,7 +11,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Vibration,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { conversationAPI, friendshipAPI } from "../services/api";
@@ -21,6 +23,8 @@ import {
   pickUserFromConversation,
 } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
+import { socketService } from "../services/socketService";
+import { useTheme } from "../contexts/ThemeContext";
 
 const FALLBACK_AVATAR =
   "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60&h=60&fit=crop&crop=face";
@@ -28,6 +32,7 @@ const FALLBACK_AVATAR =
 const ContactsScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
+  const { isDarkMode: darkMode, colors } = useTheme();
   const currentUserId = user?.uuid || user?.id || null;
   const [activeTab, setActiveTab] = useState<"friends" | "requests" | "sent" | "blocked" | "groups">("friends");
   const [friends, setFriends] = useState<any[]>([]);
@@ -83,6 +88,74 @@ const ContactsScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadAll();
+
+      const unsubPresence = socketService.on("presence:changed", () => {
+        loadAll();
+      });
+      const unsubReceived = socketService.on("friend:request:received", async () => {
+        loadAll();
+        try {
+          const storedNotif = await AsyncStorage.getItem("settings:notification");
+          if (storedNotif !== "false") {
+            Vibration.vibrate(500);
+          }
+        } catch (error) {
+          console.error("Lỗi rung trong ContactsScreen:", error);
+        }
+      });
+      const unsubSent = socketService.on("friend:request:sent", () => {
+        loadAll();
+      });
+      const unsubAccepted = socketService.on("friend:request:accepted", () => {
+        loadAll();
+      });
+      const unsubAdded = socketService.on("friend:added", () => {
+        loadAll();
+      });
+      const unsubRejected = socketService.on("friend:request:rejected", () => {
+        loadAll();
+      });
+      const unsubCancelled = socketService.on("friend:request:cancelled", () => {
+        loadAll();
+      });
+      const unsubUnfriended = socketService.on("friend:unfriended", () => {
+        loadAll();
+      });
+      const unsubBlocked = socketService.on("friend:blocked", () => {
+        loadAll();
+      });
+      const unsubBlockedBy = socketService.on("friend:blocked-by", () => {
+        loadAll();
+      });
+      const unsubUnblocked = socketService.on("friend:unblocked", () => {
+        loadAll();
+      });
+      const unsubUnblockedBy = socketService.on("friend:unblocked-by", () => {
+        loadAll();
+      });
+      const unsubJoined = socketService.on("conversation:joined", () => {
+        loadAll();
+      });
+      const unsubRemoved = socketService.on("conversation:removed", () => {
+        loadAll();
+      });
+
+      return () => {
+        unsubPresence();
+        unsubReceived();
+        unsubSent();
+        unsubAccepted();
+        unsubAdded();
+        unsubRejected();
+        unsubCancelled();
+        unsubUnfriended();
+        unsubBlocked();
+        unsubBlockedBy();
+        unsubUnblocked();
+        unsubUnblockedBy();
+        unsubJoined();
+        unsubRemoved();
+      };
     }, [loadAll])
   );
 
@@ -123,7 +196,7 @@ const ContactsScreen = () => {
       const profile = normalizeUser(response?.data?.user || response?.user || targetUser);
       navigation.navigate("Profile", { user: profile, friends });
     } catch (error) {
-      Alert.alert("Error", "Failed to load user profile");
+      Alert.alert("Lỗi", "Không thể tải thông tin cá nhân");
     }
   };
 
@@ -141,29 +214,29 @@ const ContactsScreen = () => {
   // Friend actions
   const handleAcceptRequest = async (requestId: string) => {
     try { await friendshipAPI.acceptRequest(requestId); loadAll(); }
-    catch { Alert.alert("Error", "Failed to accept request"); }
+    catch { Alert.alert("Lỗi", "Không thể chấp nhận lời mời"); }
   };
 
   const handleRejectRequest = async (requestId: string) => {
     try { await friendshipAPI.rejectRequest(requestId); loadAll(); }
-    catch { Alert.alert("Error", "Failed to reject request"); }
+    catch { Alert.alert("Lỗi", "Không thể từ chối lời mời"); }
   };
 
   const handleCancelRequest = async (requestId: string) => {
     try { await friendshipAPI.cancelRequest(requestId); loadAll(); }
-    catch { Alert.alert("Error", "Failed to cancel request"); }
+    catch { Alert.alert("Lỗi", "Không thể hủy lời mời"); }
   };
 
   const handleUnblock = async (userId: string) => {
     try { await friendshipAPI.unblockUser(userId); loadAll(); }
-    catch { Alert.alert("Error", "Failed to unblock user"); }
+    catch { Alert.alert("Lỗi", "Không thể bỏ chặn người dùng"); }
   };
 
   // Group actions
   const handleCreateGroup = async () => {
-    if (!groupName.trim()) { Alert.alert("Error", "Please enter group name"); return; }
+    if (!groupName.trim()) { Alert.alert("Lỗi", "Vui lòng nhập tên nhóm"); return; }
     if (selectedMembers.length === 0) {
-      Alert.alert("Missing Members", "Please select at least one friend.", [{ text: "OK" }]);
+      Alert.alert("Thiếu thành viên", "Vui lòng chọn ít nhất một người bạn để thêm.", [{ text: "Đồng ý" }]);
       return;
     }
     try {
@@ -171,9 +244,9 @@ const ContactsScreen = () => {
       await conversationAPI.createGroup({ name: groupName.trim(), description: groupDescription.trim(), member_ids: selectedMembers });
       setGroupName(""); setGroupDescription(""); setSelectedMembers([]); setShowCreateGroupModal(false);
       loadAll();
-      Alert.alert("Success", `Created group "${groupName.trim()}"!`);
+      Alert.alert("Thành công", `Đã tạo nhóm "${groupName.trim()}" thành công!`);
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || error.message || "Cannot create group.");
+      Alert.alert("Lỗi", error.response?.data?.message || error.message || "Không thể tạo nhóm.");
     } finally { setCreatingGroup(false); }
   };
 
@@ -185,11 +258,11 @@ const ContactsScreen = () => {
 
   const handleLeaveGroup = async () => {
     if (!selectedGroup) return;
-    Alert.alert("Leave Group", `Leave "${selectedGroup.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Leave", style: "destructive", onPress: async () => {
+    Alert.alert("Rời nhóm", `Bạn có chắc muốn rời khỏi nhóm "${selectedGroup.name}" không?`, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Rời nhóm", style: "destructive", onPress: async () => {
         try { await conversationAPI.leaveGroup(selectedGroup.id); setShowGroupInfoModal(false); loadAll(); }
-        catch { Alert.alert("Error", "Cannot leave group"); }
+        catch { Alert.alert("Lỗi", "Không thể rời nhóm"); }
       }},
     ]);
   };
@@ -198,15 +271,15 @@ const ContactsScreen = () => {
 
   // Reusable row
   const renderUserRow = (item: any, actions?: React.ReactNode) => (
-    <View className="flex-row items-center p-3 bg-white border-b border-gray-50">
+    <View className={`flex-row items-center p-3 border-b ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-50"}`}>
       <TouchableOpacity className="flex-row items-center flex-1" onPress={() => handleViewProfile(item)}>
         <View className="relative">
           <Image source={{ uri: item.avatarUrl || FALLBACK_AVATAR }} className="w-12 h-12 rounded-full" />
-          {item.isOnline && <View className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />}
+          {item.isOnline && <View className={`absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 ${darkMode ? "border-gray-800" : "border-white"}`} />}
         </View>
         <View className="flex-1 ml-3">
-          <Text className="font-semibold text-base text-gray-900">{item.name || "Unknown"}</Text>
-          {!!item.email && <Text className="text-sm text-gray-500">{item.email}</Text>}
+          <Text className={`font-semibold text-base ${darkMode ? "text-gray-100" : "text-gray-900"}`}>{item.name || "Unknown"}</Text>
+          {!!item.email && <Text className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{item.email}</Text>}
         </View>
       </TouchableOpacity>
       {actions}
@@ -214,14 +287,14 @@ const ContactsScreen = () => {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView className={`flex-1 ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
       {/* Search */}
-      <View className="bg-blue-500 mt-9 px-4 py-5">
-        <View className="bg-white rounded-full px-4 py-3 flex-row items-center shadow-sm">
+      <View className={`${darkMode ? "bg-gray-900" : "bg-blue-500"} mt-9 px-4 py-5`}>
+        <View className={`rounded-full px-4 py-3 flex-row items-center shadow-sm ${darkMode ? "bg-gray-800" : "bg-white"}`}>
           <Ionicons name="search" size={18} color="#0068FF" />
           <TextInput
-            placeholder={isSearchMode ? "Search users by email..." : "Search friends..."}
-            className="flex-1 text-sm text-gray-700 ml-3"
+            placeholder={isSearchMode ? "Tìm kiếm bằng email..." : "Tìm kiếm bạn bè..."}
+            className={`flex-1 text-sm ml-3 ${darkMode ? "text-white" : "text-gray-700"}`}
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={handleSearchChange}
@@ -232,11 +305,11 @@ const ContactsScreen = () => {
           </TouchableOpacity>
         </View>
         {isSearchMode && (
-          <View className="mt-2 bg-white rounded-lg shadow-lg max-h-60">
+          <View className={`mt-2 rounded-lg shadow-lg max-h-60 ${darkMode ? "bg-gray-800" : "bg-white"}`}>
             {searchLoading ? (
-              <View className="p-4 items-center"><Text className="text-gray-500">Searching...</Text></View>
+              <View className="p-4 items-center"><Text className={darkMode ? "text-gray-300" : "text-gray-500"}>Searching...</Text></View>
             ) : searchResults.length === 0 && searchQuery.length >= 2 ? (
-              <View className="p-4 items-center"><Text className="text-gray-500">No users found</Text></View>
+              <View className="p-4 items-center"><Text className={darkMode ? "text-gray-300" : "text-gray-500"}>No users found</Text></View>
             ) : (
               <FlatList
                 data={searchResults}
@@ -254,17 +327,17 @@ const ContactsScreen = () => {
       </View>
 
       {/* Tabs */}
-      <View className="bg-white border-b border-gray-200">
+      <View className={`border-b ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
         <View className="flex-row">
           {([
-            ["friends", `Friends${friends.length ? ` (${friends.length})` : ""}`],
-            ["requests", `Requests${receivedRequests.length ? ` (${receivedRequests.length})` : ""}`],
-            ["sent", `Sent${sentRequests.length ? ` (${sentRequests.length})` : ""}`],
-            ["blocked", `Blocked${blockedUsers.length ? ` (${blockedUsers.length})` : ""}`],
-            ["groups", `Groups${groups.length ? ` (${groups.length})` : ""}`],
+            ["friends", `Bạn bè${friends.length ? ` (${friends.length})` : ""}`],
+            ["requests", `Lời mời${receivedRequests.length ? ` (${receivedRequests.length})` : ""}`],
+            ["sent", `Đã gửi${sentRequests.length ? ` (${sentRequests.length})` : ""}`],
+            ["blocked", `Đã chặn${blockedUsers.length ? ` (${blockedUsers.length})` : ""}`],
+            ["groups", `Nhóm${groups.length ? ` (${groups.length})` : ""}`],
           ] as const).map(([key, label]) => (
             <TouchableOpacity key={key} className={`flex-1 py-3 ${activeTab === key ? "border-b-2 border-blue-500" : ""}`} onPress={() => setActiveTab(key as any)}>
-              <Text className={`text-center font-medium text-[12px] ${activeTab === key ? "text-blue-500" : "text-gray-500"}`}>{label}</Text>
+              <Text className={`text-center font-medium text-[12px] ${activeTab === key ? "text-blue-500" : (darkMode ? "text-gray-400" : "text-gray-500")}`}>{label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -276,7 +349,7 @@ const ContactsScreen = () => {
           sections={groupedFriends}
           keyExtractor={(item, i) => item.id || item.uuid || `${i}`}
           renderSectionHeader={({ section }) => (
-            <View className="bg-gray-100 px-4 py-3"><Text className="font-semibold text-sm text-gray-700">{section.title}</Text></View>
+            <View className={`px-4 py-3 ${darkMode ? "bg-gray-800" : "bg-gray-100"}`}><Text className={`font-semibold text-sm ${darkMode ? "text-gray-300" : "text-gray-700"}`}>{section.title}</Text></View>
           )}
           renderItem={({ item }) => renderUserRow(item,
             <View className="flex-row">
@@ -293,14 +366,14 @@ const ContactsScreen = () => {
         <FlatList
           data={receivedRequests}
           keyExtractor={(item, i) => item.friendshipId || item.uuid || `${i}`}
-          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="person-add-outline" size={48} color="#9CA3AF" /><Text className="text-gray-500 mt-3">No friend requests</Text></View>}
+          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="person-add-outline" size={48} color={darkMode ? "#9CA3AF" : "#9CA3AF"} /><Text className={`${darkMode ? "text-gray-400" : "text-gray-500"} mt-3`}>Không có lời mời kết bạn nào</Text></View>}
           renderItem={({ item }) => renderUserRow(normalizeUser(item.from || {}), (
             <View className="flex-row">
               <TouchableOpacity className="px-3 py-1 bg-green-500 rounded-full mr-2" onPress={() => handleAcceptRequest(item.friendshipId)}>
-                <Text className="text-white text-sm font-medium">Accept</Text>
+                <Text className="text-white text-sm font-medium">Chấp nhận</Text>
               </TouchableOpacity>
               <TouchableOpacity className="px-3 py-1 bg-red-500 rounded-full" onPress={() => handleRejectRequest(item.friendshipId)}>
-                <Text className="text-white text-sm font-medium">Reject</Text>
+                <Text className="text-white text-sm font-medium">Từ chối</Text>
               </TouchableOpacity>
             </View>
           ))}
@@ -312,10 +385,10 @@ const ContactsScreen = () => {
         <FlatList
           data={sentRequests}
           keyExtractor={(item, i) => item.friendshipId || item.uuid || `${i}`}
-          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="paper-plane-outline" size={48} color="#9CA3AF" /><Text className="text-gray-500 mt-3">No sent requests</Text></View>}
+          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="paper-plane-outline" size={48} color={darkMode ? "#9CA3AF" : "#9CA3AF"} /><Text className={`${darkMode ? "text-gray-400" : "text-gray-500"} mt-3`}>Không có yêu cầu kết bạn đã gửi</Text></View>}
           renderItem={({ item }) => renderUserRow(normalizeUser(item.to || {}), (
             <TouchableOpacity className="px-3 py-1 bg-gray-500 rounded-full" onPress={() => handleCancelRequest(item.friendshipId)}>
-              <Text className="text-white text-sm font-medium">Cancel</Text>
+              <Text className="text-white text-sm font-medium">Hủy yêu cầu</Text>
             </TouchableOpacity>
           ))}
         />
@@ -326,10 +399,10 @@ const ContactsScreen = () => {
         <FlatList
           data={blockedUsers}
           keyExtractor={(item, i) => item.id || item.uuid || `${i}`}
-          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="close-circle-outline" size={48} color="#9CA3AF" /><Text className="text-gray-500 mt-3">No blocked users</Text></View>}
+          ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="close-circle-outline" size={48} color={darkMode ? "#9CA3AF" : "#9CA3AF"} /><Text className={`${darkMode ? "text-gray-400" : "text-gray-500"} mt-3`}>Không có người dùng bị chặn</Text></View>}
           renderItem={({ item }) => renderUserRow(item, (
             <TouchableOpacity className="px-3 py-1 bg-green-500 rounded-full" onPress={() => handleUnblock(item.id)}>
-              <Text className="text-white text-sm font-medium">Unblock</Text>
+              <Text className="text-white text-sm font-medium">Bỏ chặn</Text>
             </TouchableOpacity>
           ))}
         />
@@ -337,21 +410,21 @@ const ContactsScreen = () => {
 
       {/* Groups Tab */}
       {activeTab === "groups" && (
-        <View className="flex-1 bg-white">
-          <TouchableOpacity className="flex-row items-center p-4 bg-blue-50 border-b border-blue-100" onPress={() => setShowCreateGroupModal(true)}>
+        <View className={`flex-1 ${darkMode ? "bg-gray-900" : "bg-white"}`}>
+          <TouchableOpacity className={`flex-row items-center p-4 border-b ${darkMode ? "bg-blue-950/20 border-blue-900/30" : "bg-blue-50 border-blue-100"}`} onPress={() => setShowCreateGroupModal(true)}>
             <View className="w-12 h-12 bg-blue-500 rounded-full items-center justify-center"><Ionicons name="add" size={24} color="white" /></View>
-            <View className="flex-1 ml-3"><Text className="font-medium text-blue-600">Create Group</Text><Text className="text-sm text-blue-400">Create group chat with friends</Text></View>
+            <View className="flex-1 ml-3"><Text className={`font-medium ${darkMode ? "text-blue-400" : "text-blue-600"}`}>Tạo nhóm mới</Text><Text className={`text-sm ${darkMode ? "text-blue-300/70" : "text-blue-400"}`}>Tạo cuộc trò chuyện nhóm với bạn bè</Text></View>
             <Ionicons name="chevron-forward" size={16} color="#3B82F6" />
           </TouchableOpacity>
           <FlatList
             data={groups}
             keyExtractor={(item, i) => item.id || item.uuid || `${i}`}
-            ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="people-outline" size={48} color="#9CA3AF" /><Text className="text-gray-500 mt-3">No groups yet</Text></View>}
+            ListEmptyComponent={<View className="flex-1 justify-center items-center py-20"><Ionicons name="people-outline" size={48} color={darkMode ? "#9CA3AF" : "#9CA3AF"} /><Text className={`${darkMode ? "text-gray-400" : "text-gray-500"} mt-3`}>Chưa tham gia nhóm nào</Text></View>}
             renderItem={({ item }) => (
-              <TouchableOpacity className="flex-row items-center p-3 bg-white border-b border-gray-50" onPress={() => openGroupChat(item)} onLongPress={() => handleGroupLongPress(item)} delayLongPress={1500}>
+              <TouchableOpacity className={`flex-row items-center p-3 border-b ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-50"}`} onPress={() => openGroupChat(item)} onLongPress={() => handleGroupLongPress(item)} delayLongPress={1500}>
                 <Image source={{ uri: item.avatarUrl || FALLBACK_AVATAR }} className="w-12 h-12 rounded-full" />
-                <View className="flex-1 ml-3"><Text className="font-medium text-gray-800">{item.name}</Text><Text className="text-sm text-gray-500">{item.members?.length || 0} members</Text></View>
-                <Ionicons name="chevron-forward" size={16} color="#666" />
+                <View className="flex-1 ml-3"><Text className={`font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{item.name}</Text><Text className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{item.members?.length || 0} thành viên</Text></View>
+                <Ionicons name="chevron-forward" size={16} color={darkMode ? "#9CA3AF" : "#666"} />
               </TouchableOpacity>
             )}
           />
@@ -361,34 +434,34 @@ const ContactsScreen = () => {
       {/* Create Group Modal */}
       <Modal visible={showCreateGroupModal} animationType="slide" transparent onRequestClose={() => setShowCreateGroupModal(false)}>
         <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-3xl">
-            <View className="flex-row items-center justify-between p-4 border-b border-gray-200 pt-8">
-              <TouchableOpacity onPress={() => setShowCreateGroupModal(false)}><Text className="text-blue-500 font-medium">Cancel</Text></TouchableOpacity>
-              <Text className="font-semibold text-lg">Create New Group</Text>
+          <View className={`rounded-t-3xl ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+            <View className={`flex-row items-center justify-between p-4 border-b pt-8 ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
+              <TouchableOpacity onPress={() => setShowCreateGroupModal(false)}><Text className="text-blue-500 font-medium">Hủy</Text></TouchableOpacity>
+              <Text className={`font-semibold text-lg ${darkMode ? "text-white" : "text-gray-900"}`}>Tạo nhóm mới</Text>
               <TouchableOpacity onPress={handleCreateGroup} disabled={creatingGroup || !groupName.trim()}>
-                <Text className={`font-medium ${creatingGroup || !groupName.trim() ? "text-gray-300" : "text-blue-500"}`}>{creatingGroup ? "Creating..." : "Create"}</Text>
+                <Text className={`font-medium ${creatingGroup || !groupName.trim() ? (darkMode ? "text-gray-600" : "text-gray-300") : "text-blue-500"}`}>{creatingGroup ? "Đang tạo..." : "Tạo"}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView className="p-4 pb-8">
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">Group Name</Text>
-                <TextInput className="border border-gray-300 rounded-lg p-3 text-gray-800" placeholder="Enter group name" value={groupName} onChangeText={setGroupName} maxLength={50} />
+                <Text className={`font-medium mb-2 ${darkMode ? "text-gray-200" : "text-gray-700"}`}>Tên nhóm</Text>
+                <TextInput className={`border rounded-lg p-3 ${darkMode ? "border-gray-600 text-white bg-gray-700" : "border-gray-300 text-gray-800"}`} placeholder="Nhập tên nhóm" placeholderTextColor={darkMode ? "#9CA3AF" : "#9CA3AF"} value={groupName} onChangeText={setGroupName} maxLength={50} />
               </View>
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">Description (optional)</Text>
-                <TextInput className="border border-gray-300 rounded-lg p-3 text-gray-800 h-20" placeholder="Enter description" value={groupDescription} onChangeText={setGroupDescription} multiline maxLength={200} />
+                <Text className={`font-medium mb-2 ${darkMode ? "text-gray-200" : "text-gray-700"}`}>Mô tả (tùy chọn)</Text>
+                <TextInput className={`border rounded-lg p-3 h-20 ${darkMode ? "border-gray-600 text-white bg-gray-700" : "border-gray-300 text-gray-800"}`} placeholder="Nhập mô tả nhóm" placeholderTextColor={darkMode ? "#9CA3AF" : "#9CA3AF"} value={groupDescription} onChangeText={setGroupDescription} multiline maxLength={200} />
               </View>
               <View className="mb-4">
-                <Text className="text-gray-700 font-medium mb-2">Add Members</Text>
+                <Text className={`font-medium mb-2 ${darkMode ? "text-gray-200" : "text-gray-700"}`}>Thêm thành viên</Text>
                 {friends.length > 0 ? friends.map((friend) => (
-                  <TouchableOpacity key={friend.id} className="flex-row items-center p-3 border-b border-gray-100" onPress={() => toggleMemberSelection(friend.id)}>
+                  <TouchableOpacity key={friend.id} className={`flex-row items-center p-3 border-b ${darkMode ? "border-gray-700" : "border-gray-100"}`} onPress={() => toggleMemberSelection(friend.id)}>
                     <Image source={{ uri: friend.avatarUrl || FALLBACK_AVATAR }} className="w-10 h-10 rounded-full" />
-                    <View className="flex-1 ml-3"><Text className="font-medium text-gray-800">{friend.name}</Text></View>
-                    <View className={`w-6 h-6 rounded-full border-2 ${selectedMembers.includes(friend.id) ? "bg-blue-500 border-blue-500" : "border-gray-300"}`}>
+                    <View className="flex-1 ml-3"><Text className={`font-medium ${darkMode ? "text-gray-200" : "text-gray-800"}`}>{friend.name}</Text></View>
+                    <View className={`w-6 h-6 rounded-full border-2 ${selectedMembers.includes(friend.id) ? "bg-blue-500 border-blue-500" : (darkMode ? "border-gray-600" : "border-gray-300")}`}>
                       {selectedMembers.includes(friend.id) && <Ionicons name="checkmark" size={14} color="white" />}
                     </View>
                   </TouchableOpacity>
-                )) : <Text className="text-gray-500 text-center py-4">No friends to add</Text>}
+                )) : <Text className={`text-center py-4 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Chưa có bạn bè để thêm</Text>}
               </View>
             </ScrollView>
           </View>
@@ -398,28 +471,28 @@ const ContactsScreen = () => {
       {/* Group Info Modal */}
       <Modal visible={showGroupInfoModal} animationType="fade" transparent onRequestClose={() => setShowGroupInfoModal(false)}>
         <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl w-11/12 max-w-sm mx-4">
-            <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
-              <TouchableOpacity onPress={() => setShowGroupInfoModal(false)}><Text className="text-blue-500 font-medium">Close</Text></TouchableOpacity>
-              <Text className="font-semibold text-lg">Group Info</Text>
+          <View className={`rounded-2xl w-11/12 max-w-sm mx-4 ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+            <View className={`flex-row items-center justify-between p-4 border-b ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
+              <TouchableOpacity onPress={() => setShowGroupInfoModal(false)}><Text className="text-blue-500 font-medium">Đóng</Text></TouchableOpacity>
+              <Text className={`font-semibold text-lg ${darkMode ? "text-white" : "text-gray-900"}`}>Thông tin nhóm</Text>
               <View className="w-12" />
             </View>
             {selectedGroup && (
               <View className="p-4">
                 <View className="items-center mb-4">
                   <Image source={{ uri: selectedGroup.avatarUrl || FALLBACK_AVATAR }} className="w-16 h-16 rounded-full mb-2" />
-                  <Text className="text-lg font-bold text-gray-800 mb-1">{selectedGroup.name}</Text>
-                  <Text className="text-xs text-gray-500">{selectedGroup.members?.length || 0} members</Text>
+                  <Text className={`text-lg font-bold mb-1 ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{selectedGroup.name}</Text>
+                  <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{selectedGroup.members?.length || 0} thành viên</Text>
                 </View>
                 <View className="space-y-2">
-                  <TouchableOpacity className="flex-row items-center justify-center p-3 bg-blue-50 rounded-lg" onPress={() => { setShowGroupInfoModal(false); openGroupChat(selectedGroup); }}>
-                    <Ionicons name="chatbubble-outline" size={18} color="#0068FF" /><Text className="text-blue-600 font-medium text-sm ml-2">Open Chat</Text>
+                  <TouchableOpacity className={`flex-row items-center justify-center p-3 rounded-lg ${darkMode ? "bg-blue-950/40" : "bg-blue-50"}`} onPress={() => { setShowGroupInfoModal(false); openGroupChat(selectedGroup); }}>
+                    <Ionicons name="chatbubble-outline" size={18} color="#0068FF" /><Text className="text-blue-600 font-medium text-sm ml-2">Mở cuộc trò chuyện</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity className="flex-row items-center justify-center p-3 bg-gray-50 rounded-lg" onPress={handleMuteGroup}>
-                    <Ionicons name="notifications-off-outline" size={18} color="#666" /><Text className="text-gray-700 font-medium text-sm ml-2">Mute</Text>
+                  <TouchableOpacity className={`flex-row items-center justify-center p-3 rounded-lg ${darkMode ? "bg-gray-700" : "bg-gray-50"}`} onPress={handleMuteGroup}>
+                    <Ionicons name="notifications-off-outline" size={18} color={darkMode ? "#9CA3AF" : "#666"} /><Text className={`font-medium text-sm ml-2 ${darkMode ? "text-gray-200" : "text-gray-700"}`}>Tắt thông báo</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity className="flex-row items-center justify-center p-3 bg-red-50 rounded-lg" onPress={handleLeaveGroup}>
-                    <Ionicons name="exit-outline" size={18} color="#EF4444" /><Text className="text-red-600 font-medium text-sm ml-2">Leave Group</Text>
+                  <TouchableOpacity className={`flex-row items-center justify-center p-3 rounded-lg ${darkMode ? "bg-red-950/40" : "bg-red-50"}`} onPress={handleLeaveGroup}>
+                    <Ionicons name="exit-outline" size={18} color="#EF4444" /><Text className="text-red-600 font-medium text-sm ml-2">Rời nhóm</Text>
                   </TouchableOpacity>
                 </View>
               </View>

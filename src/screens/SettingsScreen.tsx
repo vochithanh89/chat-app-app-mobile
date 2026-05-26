@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,15 +16,67 @@ import MenuItemComponent from "../components/list/MenuItemComponent";
 import { getLargeAvatar } from "../utils/avatarUtils";
 import { formatImageUrl } from "../services/chatMappers";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { userAPI } from "../services/api";
+import { socketService } from "../services/socketService";
+
+import { useTheme } from "../contexts/ThemeContext";
 
 const SettingsScreen = () => {
   const navigation = useNavigation<any>();
   const { user, logout } = useAuth();
+  const { isDarkMode: darkMode, toggleDarkMode } = useTheme();
 
   // Settings State
   const [isPrivate, setIsPrivate] = useState(false);
   const [notification, setNotification] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+
+  // Tải cài đặt từ AsyncStorage khi màn hình khởi động
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const [storedPrivate, storedNotif] = await Promise.all([
+          AsyncStorage.getItem("settings:private"),
+          AsyncStorage.getItem("settings:notification"),
+        ]);
+        if (storedPrivate !== null) setIsPrivate(storedPrivate === "true");
+        if (storedNotif !== null) setNotification(storedNotif === "true");
+      } catch (error) {
+        console.error("Lỗi tải cài đặt từ AsyncStorage:", error);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const handleTogglePrivate = async (value: boolean) => {
+    setIsPrivate(value);
+    try {
+      await AsyncStorage.setItem("settings:private", String(value));
+      // Đồng bộ lên backend thông qua API REST
+      await userAPI.updatePrivacySettings(value);
+      // Đồng bộ thông qua Socket.IO để cập nhật ngay lập tức
+      socketService.emit('presence:toggle_privacy', { isPrivate: value });
+    } catch (error) {
+      console.error("Lỗi lưu/đồng bộ cài đặt chế độ riêng tư:", error);
+      Alert.alert("Lỗi", "Không thể cập nhật chế độ riêng tư lên hệ thống.");
+      // Hoàn tác trạng thái
+      setIsPrivate(!value);
+      await AsyncStorage.setItem("settings:private", String(!value));
+    }
+  };
+
+  const handleToggleNotification = async (value: boolean) => {
+    setNotification(value);
+    try {
+      await AsyncStorage.setItem("settings:notification", String(value));
+    } catch (error) {
+      console.error("Lỗi lưu cài đặt thông báo:", error);
+    }
+  };
+
+  const handleToggleDarkMode = async () => {
+    await toggleDarkMode();
+  };
 
   const displayName = user?.name || user?.fullName || (user?.lastName && user?.firstName ? `${user.lastName} ${user.firstName}` : "") || "Người dùng";
   const avatarUrl = formatImageUrl(user?.avatarUrl || user?.avatar_url || user?.avatar) || getLargeAvatar(displayName);
@@ -112,27 +164,27 @@ const SettingsScreen = () => {
             icon="lock-closed-outline" 
             title="Chế độ riêng tư"
             rightComponent={
-              <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={isPrivate ? '#0068FF' : '#F3F4F6'} />
+              <Switch value={isPrivate} onValueChange={handleTogglePrivate} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={isPrivate ? '#0068FF' : '#F3F4F6'} />
             }
             showArrow={false}
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
           />
-
+ 
           <MenuItemComponent 
             icon="notifications-outline" 
             title="Thông báo ứng dụng"
             rightComponent={
-              <Switch value={notification} onValueChange={setNotification} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={notification ? '#0068FF' : '#F3F4F6'} />
+              <Switch value={notification} onValueChange={handleToggleNotification} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={notification ? '#0068FF' : '#F3F4F6'} />
             }
             showArrow={false}
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
           />
-
+ 
           <MenuItemComponent 
             icon="color-palette-outline" 
             title="Giao diện tối (Dark mode)"
             rightComponent={
-              <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={darkMode ? '#0068FF' : '#F3F4F6'} />
+              <Switch value={darkMode} onValueChange={handleToggleDarkMode} trackColor={{ false: '#D1D5DB', true: '#93C5FD' }} thumbColor={darkMode ? '#0068FF' : '#F3F4F6'} />
             }
             showArrow={false}
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
@@ -148,7 +200,7 @@ const SettingsScreen = () => {
           <MenuItemComponent
             icon="help-circle-outline"
             title="Trợ giúp & Phản hồi"
-            onPress={() => Alert.alert("Trợ giúp", "Tính năng trợ giúp đang được phát triển.")}
+            onPress={() => Alert.alert("Trợ giúp & Phản hồi", "Bạn có thể trò chuyện với AI hoặc nếu cần liên hệ trực tiếp hãy liên hệ tới email: chatappN7@support.com hoặc số điện thoại 0987654321")}
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
           />
 

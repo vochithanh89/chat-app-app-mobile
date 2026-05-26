@@ -133,17 +133,17 @@ const PollBubble: React.FC<PollBubbleProps> = ({ poll, isMine, currentUserId, on
           <View style={styles.headerTextWrap}>
             <View style={styles.badgeRow}>
               <Text style={styles.labelText}>BÌNH CHỌN</Text>
-              {local.isClosed && (
+              {local.isClosed ? (
                 <View style={styles.closedBadge}>
                   <Ionicons name="lock-closed" size={10} color="#6B7280" />
                   <Text style={styles.closedBadgeText}> Đã đóng</Text>
                 </View>
-              )}
-              {!local.isClosed && local.allowMultiple && (
+              ) : null}
+              {!local.isClosed && local.allowMultiple ? (
                 <View style={styles.multipleBadge}>
                   <Text style={styles.multipleBadgeText}>Nhiều lựa chọn</Text>
                 </View>
-              )}
+              ) : null}
             </View>
             <Text style={styles.questionText}>{local.question}</Text>
           </View>
@@ -167,7 +167,7 @@ const PollBubble: React.FC<PollBubbleProps> = ({ poll, isMine, currentUserId, on
               style={[
                 styles.optionButton,
                 isVoted ? styles.optionVoted : styles.optionDefault,
-                disabled && styles.optionDisabled,
+                disabled ? styles.optionDisabled : undefined,
               ]}
             >
               {/* Progress fill */}
@@ -190,10 +190,10 @@ const PollBubble: React.FC<PollBubbleProps> = ({ poll, isMine, currentUserId, on
                     isVoted ? styles.checkCircleVoted : styles.checkCircleDefault,
                   ]}
                 >
-                  {isVoted && <Ionicons name="checkmark" size={12} color="white" />}
+                  {isVoted ? <Ionicons name="checkmark" size={12} color="white" /> : null}
                 </View>
                 <Text
-                  style={[styles.optionText, isVoted && styles.optionTextVoted]}
+                  style={[styles.optionText, isVoted ? styles.optionTextVoted : undefined]}
                   numberOfLines={2}
                 >
                   {opt.text}
@@ -226,11 +226,11 @@ const PollBubble: React.FC<PollBubbleProps> = ({ poll, isMine, currentUserId, on
         ) : null}
       </View>
 
-      {busy && (
+      {busy ? (
         <View style={styles.busyOverlay}>
           <ActivityIndicator size="small" color={PURPLE} />
         </View>
-      )}
+      ) : null}
     </View>
   );
 };

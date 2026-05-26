@@ -6,6 +6,7 @@ import {
   Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -24,10 +25,14 @@ const MenuItemComponent: React.FC<MenuItemProps> = ({
   rightComponent,
   className = "",
 }) => {
+  const { isDarkMode: darkMode } = useTheme();
+
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-row items-center justify-between bg-white p-4 border-b border-gray-100 ${className}`}
+      className={`flex-row items-center justify-between p-4 border-b ${
+        darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"
+      } ${className}`}
     >
       <View className="flex-row items-center flex-1">
         <Ionicons 
@@ -35,7 +40,7 @@ const MenuItemComponent: React.FC<MenuItemProps> = ({
           size={20} 
           color="#0068FF" 
         />
-        <Text className="ml-3 text-gray-800 text-base flex-1">
+        <Text className={`ml-3 text-base flex-1 ${darkMode ? "text-gray-100" : "text-gray-800"}`}>
           {title}
         </Text>
       </View>
@@ -43,7 +48,7 @@ const MenuItemComponent: React.FC<MenuItemProps> = ({
       <View className="flex-row items-center">
         {rightComponent}
         {showArrow && !rightComponent && (
-          <Text className="text-gray-400">{'>'}</Text>
+          <Text className={darkMode ? "text-gray-500" : "text-gray-400"}>{'>'}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -51,3 +56,4 @@ const MenuItemComponent: React.FC<MenuItemProps> = ({
 };
 
 export default MenuItemComponent;
+

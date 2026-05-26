@@ -178,6 +178,16 @@ const ChatScreenReal = () => {
         [];
 
       if (rawConversation) {
+        console.log('[DEBUG RAW CONV]', JSON.stringify({
+          commentsRestricted: rawConversation.commentsRestricted,
+          comments_restricted: rawConversation.comments_restricted,
+          type: rawConversation.type,
+          membersCount: rawConversation.members?.length,
+          memberRoles: rawConversation.members?.map((m: any) => ({
+            userId: m?.user?.id || m?.user?.uuid,
+            role: m?.role,
+          })),
+        }));
         setConversation(normalizeConversation(rawConversation, currentUserId));
       }
 
@@ -287,6 +297,37 @@ const ChatScreenReal = () => {
 
   const chatTitle = conversation?.name || chatTarget?.name || "Conversation";
   const headerAvatar = chatTarget?.avatarUrl || chatTarget?.avatar || FALLBACK_AVATAR;
+
+  // Determine current user's role in the group
+  const myRole = useMemo(() => {
+    if (!conversation?.isGroup || !conversation?.members) return null;
+    const member = conversation.members.find((m: any) => {
+      const memberId = m?.user?.id || m?.id;
+      return memberId === currentUserId;
+    });
+    console.log('[DEBUG] myRole lookup:', {
+      currentUserId,
+      memberFound: !!member,
+      memberRole: member?.role,
+      membersCount: conversation.members.length,
+      memberIds: conversation.members.map((m: any) => m?.user?.id || m?.id),
+    });
+    return member?.role || 'member';
+  }, [conversation, currentUserId]);
+
+  // Group restriction — when comments_restricted is on, only owner/admin can post
+  const isRestrictedGroup =
+    conversation?.isGroup && Boolean(conversation?.commentsRestricted);
+  const canPost =
+    !isRestrictedGroup || myRole === 'owner' || myRole === 'admin';
+
+  console.log('[DEBUG] canPost check:', {
+    isGroup: conversation?.isGroup,
+    commentsRestricted: conversation?.commentsRestricted,
+    isRestrictedGroup,
+    myRole,
+    canPost,
+  });
 
   const closeAllOverlays = () => {
     setShowActions(false);
@@ -638,7 +679,7 @@ const ChatScreenReal = () => {
         {images.length > 0 && (
           <View className="mb-2">
             <Text className={`mb-2 text-xs font-semibold ${messageItem.user === "me" ? "text-blue-100" : "text-gray-500"}`}>
-              Images
+              Hình ảnh
             </Text>
             <View className="flex-row flex-wrap">
               {images.map((attachment: any) => (
@@ -661,7 +702,7 @@ const ChatScreenReal = () => {
         {videos.length > 0 && (
           <View className="mb-2">
             <Text className={`mb-2 text-xs font-semibold ${messageItem.user === "me" ? "text-blue-100" : "text-gray-500"}`}>
-              Videos
+              Video
             </Text>
             {videos.map((attachment: any) => (
               <TouchableOpacity
@@ -682,7 +723,7 @@ const ChatScreenReal = () => {
                     {attachment.fileName}
                   </Text>
                   <Text className={`mt-1 text-xs ${messageItem.user === "me" ? "text-blue-100" : "text-gray-500"}`}>
-                    {formatFileSize(attachment.fileSize) || "Tap to open"}
+                    {formatFileSize(attachment.fileSize) || "Nhấn để mở"}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -693,7 +734,7 @@ const ChatScreenReal = () => {
         {files.length > 0 && (
           <View>
             <Text className={`mb-2 text-xs font-semibold ${messageItem.user === "me" ? "text-blue-100" : "text-gray-500"}`}>
-              Files
+              Tệp
             </Text>
             {files.map((attachment: any) => (
               <TouchableOpacity
@@ -718,7 +759,7 @@ const ChatScreenReal = () => {
                     {attachment.fileName}
                   </Text>
                   <Text className={`mt-1 text-xs ${messageItem.user === "me" ? "text-blue-100" : "text-gray-500"}`}>
-                    {formatFileSize(attachment.fileSize) || "Tap to open"}
+                    {formatFileSize(attachment.fileSize) || "Nhấn để mở"}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -790,7 +831,7 @@ const ChatScreenReal = () => {
           <View style={[styles.messageBubble, isMine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
             {item.forwardedFromId ? (
               <Text className={`mb-2 text-xs italic ${isMine ? "text-blue-100" : "text-gray-500"}`}>
-                Forwarded message
+                Tin nhắn chuyển tiếp
               </Text>
             ) : null}
 
@@ -798,7 +839,7 @@ const ChatScreenReal = () => {
 
             {item.isRecalled ? (
               <Text className={`text-sm italic ${isMine ? "text-blue-100" : "text-gray-500"}`}>
-                [Message recalled]
+                [Tin nhắn đã thu hồi]
               </Text>
             ) : (
               <>
@@ -851,10 +892,12 @@ const ChatScreenReal = () => {
               <Text className="text-lg font-bold text-white">{chatTitle}</Text>
               <Text className="text-sm text-blue-100">
                 {conversation?.isGroup
-                  ? `${conversation?.members?.length || 0} members`
-                  : chatTarget?.isOnline
-                    ? "Online"
-                    : "Offline"}
+                  ? `${conversation?.members?.length || 0} thành viên`
+                  : chatTarget?.email === 'ai-bot@system.local'
+                    ? ''
+                    : chatTarget?.isOnline
+                      ? "Trực tuyến"
+                      : "Ngoại tuyến"}
               </Text>
             </View>
 
@@ -887,7 +930,7 @@ const ChatScreenReal = () => {
               ListEmptyComponent={
                 <View className="flex-1 items-center justify-center">
                   <Ionicons name="chatbubble-ellipses-outline" size={48} color="#9CA3AF" />
-                  <Text className="mt-3 text-gray-500">No messages yet</Text>
+                  <Text className="mt-3 text-gray-500">Chưa có tin nhắn</Text>
                 </View>
               }
               onContentSizeChange={() => scrollToBottom(false)}
@@ -895,6 +938,23 @@ const ChatScreenReal = () => {
           </View>
         )}
 
+        {!canPost ? (
+          <View
+            className="border-t border-gray-200 bg-white px-4 py-4"
+            style={[
+              isWeb ? styles.composerContainerWeb : styles.composerContainer,
+              { paddingBottom: Math.max(insets.bottom, 12) },
+            ]}
+            onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
+          >
+            <View className="flex-row items-center justify-center rounded-2xl bg-blue-50 px-4 py-3">
+              <Ionicons name="lock-closed" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
+              <Text className="flex-1 text-center text-sm text-gray-600">
+                Chỉ <Text className="font-semibold text-blue-500">trưởng/phó nhóm</Text> được gửi tin nhắn vào nhóm.
+              </Text>
+            </View>
+          </View>
+        ) : (
         <View
           className="border-t border-gray-200 bg-white px-3 py-2"
           style={[
@@ -908,16 +968,16 @@ const ChatScreenReal = () => {
               <View className="mr-3 h-10 w-1 rounded-full bg-blue-500" />
               <View className="flex-1">
                 <Text className="text-xs font-semibold text-blue-600">
-                  Replying to {replyingPreview?.sender?.name || "message"}
+                  Đang trả lời {replyingPreview?.sender?.name || "tin nhắn"}
                 </Text>
                 <Text className="mt-1 text-sm text-gray-700" numberOfLines={2}>
                   {replyingPreview?.isRecalled
-                    ? "[Message recalled]"
+                    ? "[Tin nhắn đã thu hồi]"
                     : replyingPreview?.content ||
                       replyingPreview?.fileAttachments?.[0]?.fileName ||
                       replyingPreview?.imageAttachments?.[0]?.fileName ||
                       replyingPreview?.videoAttachments?.[0]?.fileName ||
-                      "Attachment"}
+                      "Tệp đính kèm"}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setReplyingTo(null)} className="ml-3 p-1">
@@ -926,9 +986,9 @@ const ChatScreenReal = () => {
             </View>
           ) : null}
 
-          {renderPendingAttachmentSection("Images", groupedPendingAttachments.image, "#2563EB", "image-outline")}
-          {renderPendingAttachmentSection("Videos", groupedPendingAttachments.video, "#2563EB", "videocam-outline")}
-          {renderPendingAttachmentSection("Files", groupedPendingAttachments.file, "#2563EB", "document-attach-outline")}
+          {renderPendingAttachmentSection("Ảnh", groupedPendingAttachments.image, "#2563EB", "image-outline")}
+          {renderPendingAttachmentSection("Video", groupedPendingAttachments.video, "#2563EB", "videocam-outline")}
+          {renderPendingAttachmentSection("Tệp", groupedPendingAttachments.file, "#2563EB", "document-attach-outline")}
 
           {showComposerEmojiPicker ? (
             <View className="mb-3 rounded-2xl bg-gray-50 px-3 py-3">
@@ -953,7 +1013,7 @@ const ChatScreenReal = () => {
 
             <View className="mr-3 flex-1 rounded-3xl bg-gray-100 px-4 py-2">
               <TextInput
-                placeholder="Type a message..."
+                placeholder="Nhập tin nhắn..."
                 placeholderTextColor="#9CA3AF"
                 value={message}
                 onChangeText={setMessage}
@@ -988,23 +1048,24 @@ const ChatScreenReal = () => {
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         <Modal visible={showAttachmentPicker} transparent animationType="fade" onRequestClose={() => setShowAttachmentPicker(false)}>
           <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setShowAttachmentPicker(false)}>
             <Pressable className="rounded-t-3xl bg-white px-5 pb-8 pt-5">
-              <Text className="mb-4 text-base font-semibold text-gray-800">Send attachment</Text>
+              <Text className="mb-4 text-base font-semibold text-gray-800">Gửi tệp đính kèm</Text>
               <View className="flex-row justify-between">
                 <TouchableOpacity className="items-center" onPress={pickFiles}>
                   <View className="mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
                     <Ionicons name="document-attach-outline" size={24} color="#0F172A" />
                   </View>
-                  <Text className="text-sm text-gray-700">File</Text>
+                  <Text className="text-sm text-gray-700">Tệp</Text>
                 </TouchableOpacity>
                 <TouchableOpacity className="items-center" onPress={pickImages}>
                   <View className="mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
                     <Ionicons name="image-outline" size={24} color="#2563EB" />
                   </View>
-                  <Text className="text-sm text-gray-700">Image</Text>
+                  <Text className="text-sm text-gray-700">Hình ảnh</Text>
                 </TouchableOpacity>
                 <TouchableOpacity className="items-center" onPress={pickVideos}>
                   <View className="mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
@@ -1020,7 +1081,7 @@ const ChatScreenReal = () => {
         <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)}>
           <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setShowActions(false)}>
             <Pressable className="rounded-t-3xl bg-white px-5 pb-8 pt-5">
-              <Text className="mb-4 text-base font-semibold text-gray-800">Message actions</Text>
+              <Text className="mb-4 text-base font-semibold text-gray-800">Thao tác tin nhắn</Text>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
                 {REACTION_EMOJIS.map((emoji) => (
@@ -1042,7 +1103,7 @@ const ChatScreenReal = () => {
                 }}
               >
                 <Ionicons name="arrow-undo-outline" size={20} color="#2563EB" />
-                <Text className="ml-3 text-sm text-gray-800">Reply</Text>
+                <Text className="ml-3 text-sm text-gray-800">Trả lời</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1053,17 +1114,17 @@ const ChatScreenReal = () => {
                 }}
               >
                 <Ionicons name="share-social-outline" size={20} color="#2563EB" />
-                <Text className="ml-3 text-sm text-gray-800">Forward</Text>
+                <Text className="ml-3 text-sm text-gray-800">Chuyển tiếp</Text>
               </TouchableOpacity>
 
               {selectedMessage?.user === "me" && !selectedMessage?.isRecalled ? (
                 <TouchableOpacity
                   className="mb-2 flex-row items-center rounded-2xl px-3 py-3"
                   onPress={() =>
-                    Alert.alert("Recall message", "Recall this message for everyone?", [
-                      { text: "Cancel", style: "cancel" },
+                    Alert.alert("Thu hồi tin nhắn", "Thu hồi tin nhắn này cho tất cả mọi người?", [
+                      { text: "Hủy", style: "cancel" },
                       {
-                        text: "Recall",
+                        text: "Thu hồi",
                         style: "destructive",
                         onPress: () => handleRecall(selectedMessage),
                       },
@@ -1071,17 +1132,17 @@ const ChatScreenReal = () => {
                   }
                 >
                   <Ionicons name="refresh-outline" size={20} color="#F97316" />
-                  <Text className="ml-3 text-sm text-gray-800">Recall for both sides</Text>
+                  <Text className="ml-3 text-sm text-gray-800">Thu hồi cho cả hai bên</Text>
                 </TouchableOpacity>
               ) : null}
 
               <TouchableOpacity
                 className="flex-row items-center rounded-2xl px-3 py-3"
                 onPress={() =>
-                  Alert.alert("Delete message", "Delete this message only on your side?", [
-                    { text: "Cancel", style: "cancel" },
+                  Alert.alert("Xóa tin nhắn", "Xóa tin nhắn này chỉ ở phía bạn?", [
+                    { text: "Hủy", style: "cancel" },
                     {
-                      text: "Delete",
+                      text: "Xóa",
                       style: "destructive",
                       onPress: () => handleDeleteForMe(selectedMessage),
                     },
@@ -1089,7 +1150,7 @@ const ChatScreenReal = () => {
                 }
               >
                 <Ionicons name="trash-outline" size={20} color="#DC2626" />
-                <Text className="ml-3 text-sm text-red-600">Delete for me</Text>
+                <Text className="ml-3 text-sm text-red-600">Xóa ở phía tôi</Text>
               </TouchableOpacity>
             </Pressable>
           </Pressable>
@@ -1098,7 +1159,7 @@ const ChatScreenReal = () => {
         <Modal visible={showForwardModal} transparent animationType="fade" onRequestClose={() => setShowForwardModal(false)}>
           <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setShowForwardModal(false)}>
             <Pressable className="max-h-[75%] rounded-t-3xl bg-white px-5 pb-8 pt-5">
-              <Text className="mb-4 text-base font-semibold text-gray-800">Forward message</Text>
+              <Text className="mb-4 text-base font-semibold text-gray-800">Chuyển tiếp tin nhắn</Text>
 
               {forwardLoading ? (
                 <View className="items-center justify-center py-8">
@@ -1126,7 +1187,7 @@ const ChatScreenReal = () => {
                         <View className="flex-1">
                           <Text className="text-sm font-semibold text-gray-800">{item.name}</Text>
                           <Text className="mt-1 text-xs text-gray-500">
-                            {item.isGroup ? `${item.members?.length || 0} members` : "Direct conversation"}
+                            {item.isGroup ? `${item.members?.length || 0} thành viên` : "Trò chuyện riêng"}
                           </Text>
                         </View>
                         <Ionicons
@@ -1150,7 +1211,7 @@ const ChatScreenReal = () => {
                 {forwarding ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <Text className="text-center text-sm font-semibold text-white">Forward</Text>
+                  <Text className="text-center text-sm font-semibold text-white">Chuyển tiếp</Text>
                 )}
               </TouchableOpacity>
             </Pressable>
