@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -33,6 +34,12 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, "Chat">;
 
 const FALLBACK_AVATAR =
   "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60&h=60&fit=crop&crop=face";
+
+const getNicknameKey = (conversationId?: string | null, userId?: string | null) =>
+  conversationId && userId ? `chat:nickname:${conversationId}:${userId}` : null;
+
+const getClearedAtKey = (conversationId?: string | null) =>
+  conversationId ? `chat:options:${conversationId}:clearedAt` : null;
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
@@ -63,14 +70,41 @@ const HomeScreen = () => {
         const response = await conversationAPI.getConversations();
         const rawConversations =
           response?.data?.conversations || response?.conversations || [];
+        const normalizedConversations = Array.isArray(rawConversations)
+          ? rawConversations.map((item) => normalizeConversation(item, currentUserId))
+          : [];
 
-        setConversations(
-          Array.isArray(rawConversations)
-            ? rawConversations.map((item) =>
-                normalizeConversation(item, currentUserId)
-              )
-            : []
+        const decoratedConversations = await Promise.all(
+          normalizedConversations.map(async (item) => {
+            const clearedAtKey = getClearedAtKey(item.id);
+            const clearedAt = clearedAtKey ? await AsyncStorage.getItem(clearedAtKey) : null;
+            const hasNewMessageAfterClear =
+              clearedAt && item.rawTime
+                ? new Date(item.rawTime).getTime() > new Date(clearedAt).getTime()
+                : false;
+
+            if (item.isGroup) {
+              return {
+                ...item,
+                lastMsg: clearedAt && !hasNewMessageAfterClear ? "" : item.lastMsg,
+              };
+            }
+
+            const otherUserId = item.otherUser?.id || item.otherUser?.uuid || null;
+            const nicknameKey = getNicknameKey(item.id, otherUserId);
+            const [nickname] = await Promise.all([
+              nicknameKey ? AsyncStorage.getItem(nicknameKey) : Promise.resolve(null),
+            ]);
+
+            return {
+              ...item,
+              name: nickname?.trim() || item.name,
+              lastMsg: clearedAt && !hasNewMessageAfterClear ? "" : item.lastMsg,
+            };
+          })
         );
+
+        setConversations(decoratedConversations);
       } catch (error) {
         console.log("Load conversations error:", error);
         setConversations([]);
@@ -247,8 +281,8 @@ const HomeScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Search Bar */}
-      <View className="bg-blue-500 px-4 py-4">
-        <View className="bg-white rounded-full px-4 py-3 flex-row items-center">
+      <View className="bg-blue-500 px-4 py-4 flex-row items-center">
+        <View className="bg-white rounded-full px-4 py-3 flex-row items-center flex-1">
           <Ionicons name="search" size={18} color="#0068FF" />
           <TextInput
             placeholder="Search conversations..."
@@ -258,6 +292,12 @@ const HomeScreen = () => {
             className="flex-1 text-sm text-gray-700 ml-3"
           />
         </View>
+        <TouchableOpacity 
+          className="ml-3"
+          onPress={() => navigation.navigate("QrScan" as never)}
+        >
+          <Ionicons name="qr-code-outline" size={28} color="white" />
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}

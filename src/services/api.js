@@ -106,7 +106,8 @@ const resolveApiBaseUrl = () => {
   return "http://127.0.0.1:3333";
 };
 
-export const API_BASE_URL = resolveApiBaseUrl();
+// Hardcoded to the backend development server running on the PC
+export const API_BASE_URL = "http://192.168.1.141:62201";
 
 const getPayloadData = (response) => response?.data?.data ?? response?.data ?? {};
 
@@ -132,7 +133,7 @@ const assertId = (value, label) => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -157,6 +158,21 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+// Các endpoint auth không cần refresh token
+const AUTH_ENDPOINTS = [
+  "/api/v1/auth/login",
+  "/api/v1/auth/register",
+  "/api/v1/auth/refresh",
+  "/api/v1/auth/forgot-password",
+  "/api/v1/auth/reset-password",
+  "/api/v1/auth/verify-email",
+  "/api/v1/auth/resend-otp",
+];
+
+const isAuthEndpoint = (url) => {
+  return AUTH_ENDPOINTS.some((endpoint) => url?.includes(endpoint));
+};
+
 // Interceptor cho response - xử lý refresh token
 api.interceptors.response.use(
   (response) => response,
@@ -165,6 +181,11 @@ api.interceptors.response.use(
 
     // Nếu lỗi không phải 401 hoặc request đã được retry, reject
     if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    // Bỏ qua refresh token cho các endpoint auth (login, register, v.v.)
+    if (isAuthEndpoint(originalRequest.url)) {
       return Promise.reject(error);
     }
 
@@ -189,8 +210,11 @@ api.interceptors.response.use(
       if (refreshToken) {
         const response = await axios.post(
           `${API_BASE_URL}/api/v1/auth/refresh`,
+          {},
           {
-            refreshToken: refreshToken,
+            headers: {
+              Authorization: `Bearer ${refreshToken}`,
+            },
           },
         );
 
@@ -234,20 +258,47 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * Helper to determine device_type for login requests.
+ * Returns 'mobile_ios', 'mobile_android', or 'web'.
+ */
+const getDeviceType = () => {
+  if (Platform.OS === 'ios') return 'mobile_ios';
+  if (Platform.OS === 'android') return 'mobile_android';
+  return 'web';
+};
+
+/**
+ * Force-logout the current session (clear tokens).
+ * Called by socketService when the server emits `auth:session_replaced`.
+ */
+export const forceLogout = async () => {
+  try {
+    await tokenStorage.removeItems(["accessToken", "refreshToken"]);
+    await AsyncStorage.multiRemove(["userData", "isAuthenticated"]);
+  } catch (e) {
+    console.error("forceLogout error:", e);
+  }
+};
+
 // API xác thực người dùng
 export const authAPI = {
   // Đăng nhập
   login: async (identifier, password) => {
+    const normalizedIdentifier = identifier?.trim() || ''
+    const email = normalizedIdentifier.includes('@') ? normalizedIdentifier.toLowerCase() : undefined
+
     console.log("Login request:", {
-      identifier,
+      identifier: normalizedIdentifier,
       password: "***",
       API_BASE_URL,
     });
 
     const response = await api.post("/api/v1/auth/login", {
-      email: identifier,
-      identifier,
+      email: email || normalizedIdentifier,
+      identifier: normalizedIdentifier,
       password,
+      device_type: getDeviceType(),
     });
 
     const { accessToken, refreshToken } = extractTokens(response);
@@ -342,7 +393,11 @@ export const userAPI = {
 
   // Đổi mật khẩu
   changePassword: async (passwordData) => {
-    const response = await api.post("/api/v1/auth/change-password", passwordData);
+    const dataWithDevice = {
+      ...passwordData,
+      device_type: getDeviceType()
+    };
+    const response = await api.post("/api/v1/auth/change-password", dataWithDevice);
     return response.data;
   },
 
@@ -578,6 +633,26 @@ export const conversationAPI = {
   },
 };
 
+export const aiAPI = {
+  startConversation: async () => {
+    const response = await api.post('/api/v1/ai/conversations');
+    return getPayloadData(response);
+  },
+
+  startNewConversation: async () => {
+    const response = await api.post('/api/v1/ai/conversations/new');
+    return getPayloadData(response);
+  },
+
+  sendMessage: async (conversationId, content) => {
+    const response = await api.post('/api/v1/ai/chat', {
+      conversation_id: conversationId,
+      content,
+    });
+    return getPayloadData(response);
+  },
+};
+
 export const messageAPI = {
   getMessages: async (conversationId, params = {}) => {
     assertId(conversationId, "conversationId");
@@ -601,6 +676,8 @@ export const messageAPI = {
     if (Platform.OS === "web") {
       if (file.file instanceof File) {
         formData.append("file", file.file, fileName);
+      } else if (file.file instanceof Blob) {
+        formData.append("file", file.file, fileName);
       } else if (file.uri) {
         const blobResponse = await fetch(file.uri);
         const blob = await blobResponse.blob();
@@ -616,12 +693,11 @@ export const messageAPI = {
       });
     }
 
-    const config = {};
-    if (Platform.OS !== "web") {
-      config.headers = {
-        "Content-Type": "multipart/form-data",
-      };
-    }
+    const config = {
+      headers: {
+        Accept: "application/json",
+      },
+    };
 
     const response = await api.post("/api/v1/messages/upload", formData, config);
     return response.data;

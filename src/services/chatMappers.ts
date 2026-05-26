@@ -103,6 +103,12 @@ export const normalizeUser = (user: any = {}) => {
 
 export const normalizeMessage = (message: any = {}, currentUserId?: string | null) => {
   const sender = normalizeUser(message?.sender);
+  const messageTime =
+    message?.createdAt ||
+    message?.created_at ||
+    message?.updatedAt ||
+    message?.updated_at ||
+    null;
   const currentUserKey = currentUserId ? String(currentUserId) : null;
   const senderKeys = [
     sender?.id,
@@ -184,8 +190,8 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
     content: message?.content || "",
     user: isMine ? "me" : "other",
     sender,
-    time: formatTimeLabel(message?.created_at || message?.updated_at),
-    rawTime: message?.created_at || message?.updated_at || null,
+    time: (message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at) ? new Date(message.createdAt || message.created_at || message.updatedAt || message.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : formatTimeLabel(message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at),
+    rawTime: message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at || null,
     status: isMine ? "sent" : "read",
     isRecalled: Boolean(message?.isRecalled ?? message?.is_recalled),
     replyToMessageId: message?.replyToMessageId || message?.reply_to_message_id || null,
@@ -217,6 +223,18 @@ export const normalizeConversation = (
     members.find((member: any) => member?.user?.id && member.user.id !== currentUserId)?.user ||
     null;
   const latestMessage = messages[0] || conversation?.last_message || null;
+  const latestMessageTime =
+    conversation?.lastMessageAt ||
+    conversation?.last_message_at ||
+    latestMessage?.createdAt ||
+    latestMessage?.created_at ||
+    latestMessage?.updatedAt ||
+    latestMessage?.updated_at ||
+    conversation?.updatedAt ||
+    conversation?.updated_at ||
+    conversation?.createdAt ||
+    conversation?.created_at ||
+    null;
   const avatarUrl = formatImageUrl(
     conversation?.avatarUrl ||
     conversation?.avatar_url ||
@@ -245,18 +263,8 @@ export const normalizeConversation = (
       latestMessage?.content ||
       conversation?.last_message?.content ||
       "No messages yet",
-    time: formatTimeLabel(
-      conversation?.last_message_at ||
-      latestMessage?.created_at ||
-      conversation?.updated_at ||
-      conversation?.created_at,
-    ),
-    rawTime:
-      conversation?.last_message_at ||
-      latestMessage?.created_at ||
-      conversation?.updated_at ||
-      conversation?.created_at ||
-      null,
+    time: formatTimeLabel(latestMessageTime),
+    rawTime: latestMessageTime,
     unread: conversation?.unread_count || conversation?.unread || 0,
     online: Boolean(otherMember?.isOnline),
     isOnline: Boolean(otherMember?.isOnline),
