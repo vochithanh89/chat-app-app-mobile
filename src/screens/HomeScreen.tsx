@@ -96,10 +96,12 @@ const HomeScreen = () => {
             }
 
             const otherUserId = item.otherUser?.id || item.otherUser?.uuid || null;
-            const nicknameKey = getNicknameKey(item.id, otherUserId);
-            const [nickname] = await Promise.all([
-              nicknameKey ? AsyncStorage.getItem(nicknameKey) : Promise.resolve(null),
-            ]);
+            const targetMember = item.members?.find((m: any) =>
+              m.user?.id === otherUserId ||
+              m.user?.uuid === otherUserId ||
+              m.userId === otherUserId
+            );
+            const nickname = targetMember?.nickname || null;
 
             return {
               ...item,
@@ -142,6 +144,10 @@ const HomeScreen = () => {
       loadConversations();
       loadFriends();
 
+      const interval = setInterval(() => {
+        loadConversations(true);
+      }, 5000); // Poll every 5s to sync latest messages and ensure list remains fresh
+
       const unsubNewMsg = socketService.on("message:new", async (msgData: any) => {
         loadConversations(true);
         try {
@@ -168,13 +174,18 @@ const HomeScreen = () => {
       const unsubPresence = socketService.on("presence:changed", () => {
         loadConversations(true);
       });
+      const unsubMembersChanged = socketService.on("conversation:members-changed", () => {
+        loadConversations(true);
+      });
 
       return () => {
+        clearInterval(interval);
         unsubNewMsg();
         unsubJoined();
         unsubRead();
         unsubRemoved();
         unsubPresence();
+        unsubMembersChanged();
       };
     }, [loadConversations])
   );
@@ -243,7 +254,7 @@ const HomeScreen = () => {
   const filteredConversations = useMemo(() => {
     const query = searchText.trim().toLowerCase();
 
-    return conversations.filter((item) => {
+    const filtered = conversations.filter((item) => {
       const matchesTab =
         activeTab === "messages" ? !item.isGroup : item.isGroup;
       const matchesQuery =
@@ -252,6 +263,18 @@ const HomeScreen = () => {
         item.lastMsg?.toLowerCase().includes(query);
 
       return matchesTab && matchesQuery;
+    });
+
+    // Pinned conversations at the top, ordered by pinOrder descending, then by rawTime descending
+    return [...filtered].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      if (a.isPinned && b.isPinned) {
+        return (Number(b.pinOrder) || 0) - (Number(a.pinOrder) || 0);
+      }
+      const timeA = a.rawTime ? new Date(a.rawTime).getTime() : 0;
+      const timeB = b.rawTime ? new Date(b.rawTime).getTime() : 0;
+      return timeB - timeA;
     });
   }, [activeTab, conversations, searchText]);
 
@@ -265,7 +288,11 @@ const HomeScreen = () => {
   const renderConversation = (item: any) => (
     <TouchableOpacity
       key={item.id}
-      className={`flex-row items-center px-4 py-4 border-b ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}
+      className={`flex-row items-center px-4 py-4 border-b ${
+        item.isPinned
+          ? (isDarkMode ? "bg-blue-950/20 border-gray-700" : "bg-blue-50/50 border-gray-100")
+          : (isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100")
+      }`}
       onPress={() => openConversation(item)}
     >
       <View className="relative mr-3">
@@ -291,9 +318,19 @@ const HomeScreen = () => {
           >
             {item.name}
           </Text>
-          <Text className={`text-xs ml-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-            {item.time || ""}
-          </Text>
+          <View className="flex-row items-center">
+            {item.isPinned && (
+              <Ionicons
+                name="pin"
+                size={12}
+                color="#0068FF"
+                style={{ marginRight: 4 }}
+              />
+            )}
+            <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+              {item.time || ""}
+            </Text>
+          </View>
         </View>
 
         {item.isGroup && ongoingGroupCalls[item.id] ? (

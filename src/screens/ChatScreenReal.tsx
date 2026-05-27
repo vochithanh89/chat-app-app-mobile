@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -17,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
@@ -29,6 +31,7 @@ import {
   normalizeMessage,
   normalizeUser,
   pickUserFromConversation,
+  getMappedBgColor,
 } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
@@ -101,6 +104,7 @@ const ChatScreenReal = () => {
   const [conversationId, setConversationId] = useState<string | null>(
     routeConversationId || routeUser?.conversationId || null,
   );
+  const [chatBackground, setChatBackground] = useState<string | null>(null);
   const [conversation, setConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [replyingTo, setReplyingTo] = useState<any>(null);
@@ -231,6 +235,12 @@ const ChatScreenReal = () => {
     }, [loadConversationData]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      setChatBackground(conversation?.chatBackground || null);
+    }, [conversation?.chatBackground])
+  );
+
   useEffect(() => {
     if (messages.length > 0) {
       scrollToBottom();
@@ -295,7 +305,7 @@ const ChatScreenReal = () => {
     };
   }, [pendingAttachments]);
 
-  const chatTitle = conversation?.name || chatTarget?.name || "Conversation";
+  const chatTitle = conversation?.name || chatTarget?.name || "Cuộc trò chuyện";
   const headerAvatar = chatTarget?.avatarUrl || chatTarget?.avatar || FALLBACK_AVATAR;
 
   // Determine current user's role in the group
@@ -817,6 +827,54 @@ const ChatScreenReal = () => {
   const renderMessage = ({ item }: { item: any }) => {
     const isMine = item.user === "me";
 
+    const isSystem = typeof item.content === 'string' && item.content.startsWith('__system__:');
+    if (isSystem) {
+      const parts = item.content.split(':');
+      const action = parts[1]; // 'joined', 'left', 'added', 'removed', 'nickname-changed', 'custom'
+      let text = '';
+      const member = conversation?.members?.find((m: any) =>
+        m.user?.id === item.sender?.id ||
+        m.user?.uuid === item.sender?.uuid ||
+        m.userId === item.sender?.id ||
+        m.userId === item.sender?.uuid
+      );
+      const senderName = member?.nickname || item.sender?.name || 'Thành viên';
+      
+      if (action === 'joined') {
+        text = `${senderName} đã tham gia nhóm`;
+      } else if (action === 'left') {
+        text = `${senderName} đã rời khỏi nhóm`;
+      } else if (action === 'added') {
+        text = `${senderName} đã thêm ${parts[3] || 'thành viên'} vào nhóm`;
+      } else if (action === 'removed') {
+        text = `${senderName} đã xóa ${parts[3] || 'thành viên'} khỏi nhóm`;
+      } else if (action === 'custom') {
+        text = parts.slice(2).join(':');
+      } else if (action === 'nickname-changed') {
+        const targetUuid = parts[2];
+        const newNickname = parts.slice(3).join(':');
+        const targetMember = conversation?.members?.find((m: any) =>
+          m.user?.uuid === targetUuid ||
+          m.user?.id === targetUuid ||
+          m.userId === targetUuid
+        );
+        const targetName = targetMember?.user?.name || 'thành viên';
+        text = newNickname
+          ? `${senderName} đã đặt biệt danh cho ${targetName} là ${newNickname}`
+          : `${senderName} đã gỡ biệt danh của ${targetName}`;
+      } else {
+        text = item.content;
+      }
+
+      return (
+        <View style={styles.systemMessageContainer}>
+          <View style={styles.systemMessagePill}>
+            <Text style={styles.systemMessageText}>{text}</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
         <TouchableOpacity
@@ -883,21 +941,29 @@ const ChatScreenReal = () => {
               <Ionicons name="arrow-back" size={20} color="white" />
             </TouchableOpacity>
 
-            <Image
-              source={{ uri: headerAvatar }}
-              className="mr-3 h-12 w-12 rounded-full border-2 border-white"
-            />
+            {chatTitle === "Tài liệu của tôi" ? (
+              <View className="mr-3 h-12 w-12 rounded-full border-2 border-white bg-blue-500 items-center justify-center">
+                <Ionicons name="cloud" size={24} color="white" />
+              </View>
+            ) : (
+              <Image
+                source={{ uri: headerAvatar }}
+                className="mr-3 h-12 w-12 rounded-full border-2 border-white"
+              />
+            )}
 
             <View className="flex-1">
               <Text className="text-lg font-bold text-white">{chatTitle}</Text>
               <Text className="text-sm text-blue-100">
-                {conversation?.isGroup
-                  ? `${conversation?.members?.length || 0} thành viên`
-                  : chatTarget?.email === 'ai-bot@system.local'
-                    ? ''
-                    : chatTarget?.isOnline
-                      ? "Trực tuyến"
-                      : "Ngoại tuyến"}
+                {chatTitle === "Tài liệu của tôi"
+                  ? "Nơi lưu trữ cá nhân"
+                  : (conversation?.isGroup
+                    ? `${conversation?.members?.length || 0} thành viên`
+                    : chatTarget?.email === 'ai-bot@system.local'
+                      ? ''
+                      : chatTarget?.isOnline
+                        ? "Trực tuyến"
+                        : "Ngoại tuyến")}
               </Text>
             </View>
 
@@ -910,33 +976,56 @@ const ChatScreenReal = () => {
           </View>
         </View>
 
-        {loading ? (
-          <View style={styles.listArea} className="items-center justify-center">
-            <ActivityIndicator size="large" color="#0068FF" />
-          </View>
-        ) : (
-          <View style={styles.listArea}>
-            <FlatList
-              ref={listRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={renderMessage}
-              style={styles.list}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{
-                paddingBottom: (isWeb ? 12 : composerHeight + insets.bottom + 12),
-                flexGrow: messages.length === 0 ? 1 : 0,
-              }}
-              ListEmptyComponent={
-                <View className="flex-1 items-center justify-center">
-                  <Ionicons name="chatbubble-ellipses-outline" size={48} color="#9CA3AF" />
-                  <Text className="mt-3 text-gray-500">Chưa có tin nhắn</Text>
-                </View>
-              }
-              onContentSizeChange={() => scrollToBottom(false)}
-            />
-          </View>
-        )}
+        {(() => {
+          const isPresetColor = chatBackground && (chatBackground.startsWith('#') || chatBackground.startsWith('linear-gradient'));
+          const isCustomImage = chatBackground && !chatBackground.startsWith('#') && !chatBackground.startsWith('linear-gradient');
+
+          const listContent = loading ? (
+            <View style={styles.listArea} className="items-center justify-center">
+              <ActivityIndicator size="large" color="#0068FF" />
+            </View>
+          ) : (
+            <View style={styles.listArea}>
+              <FlatList
+                ref={listRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                renderItem={renderMessage}
+                style={styles.list}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{
+                  paddingBottom: (isWeb ? 12 : composerHeight + insets.bottom + 12),
+                  flexGrow: messages.length === 0 ? 1 : 0,
+                }}
+                ListEmptyComponent={
+                  <View className="flex-1 items-center justify-center">
+                    <Ionicons name="chatbubble-ellipses-outline" size={48} color="#9CA3AF" />
+                    <Text className="mt-3 text-gray-500">Chưa có tin nhắn</Text>
+                  </View>
+                }
+                onContentSizeChange={() => scrollToBottom(false)}
+              />
+            </View>
+          );
+
+          if (isCustomImage) {
+            return (
+              <ImageBackground
+                source={{ uri: chatBackground }}
+                style={styles.listArea}
+                resizeMode="cover"
+              >
+                {listContent}
+              </ImageBackground>
+            );
+          } else {
+            return (
+              <View style={[styles.listArea, { backgroundColor: getMappedBgColor(chatBackground, false, null) }]}>
+                {listContent}
+              </View>
+            );
+          }
+        })()}
 
         {!canPost ? (
           <View
@@ -1223,6 +1312,26 @@ const ChatScreenReal = () => {
 };
 
 const styles = StyleSheet.create({
+  systemMessageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+    width: '100%',
+  },
+  systemMessagePill: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    maxWidth: '95%',
+  },
+  systemMessageText: {
+    color: '#6B7280',
+    fontSize: 11,
+    textAlign: 'center',
+  },
   keyboardContainer: {
     flex: 1,
     minHeight: 0,

@@ -96,6 +96,24 @@ class SocketService {
         );
       });
 
+      // ── Account locked ──
+      this.socket.on('auth:account_locked', (data: any) => {
+        console.warn('[Socket] Account locked:', data);
+        Alert.alert(
+          'Tài khoản bị khóa',
+          data?.message || 'tài khoản của bạn đã bị khóa, hãy liên hệ với hỗ trợ viên để được mở khóa. tài khoản hỗ trợ viên: chatappN7@support.com',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                this.handleForceLogout();
+              },
+            },
+          ],
+          { cancelable: false },
+        );
+      });
+
     } catch (error) {
       console.error('[Socket] Setup error:', error);
     }

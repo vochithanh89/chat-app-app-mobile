@@ -67,7 +67,10 @@ export const formatTimeLabel = (value?: string | null) => {
     return `${diffDays} ngày trước`;
   }
 
-  return date.toLocaleDateString('vi-VN');
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export const normalizeUser = (user: any = {}) => {
@@ -128,9 +131,11 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
       ? "image"
       : mimeType.startsWith("video/")
         ? "video"
-        : explicitType === "image" || explicitType === "video" || explicitType === "file"
-          ? explicitType
-          : "file";
+        : mimeType.startsWith("audio/")
+          ? "audio"
+          : explicitType === "image" || explicitType === "video" || explicitType === "audio" || explicitType === "file"
+            ? explicitType
+            : "file";
 
     return {
       ...attachment,
@@ -141,6 +146,7 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
       mimeType,
       fileSize: attachment?.fileSize || attachment?.file_size || attachment?.size || 0,
       type: normalizedType,
+      durationMs: attachment?.durationMs || attachment?.duration_ms || 0,
     };
   });
   const groupedReactions = Array.isArray(message?.reactions)
@@ -190,16 +196,26 @@ export const normalizeMessage = (message: any = {}, currentUserId?: string | nul
     content: message?.content === "No messages yet" ? "Chưa có tin nhắn" : (message?.content || ""),
     user: isMine ? "me" : "other",
     sender,
-    time: (message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at) ? new Date(message.createdAt || message.created_at || message.updatedAt || message.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : formatTimeLabel(message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at),
+    time: (() => {
+      const ts = message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at;
+      if (!ts) return formatTimeLabel(ts);
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return formatTimeLabel(ts);
+      const hour = String(d.getHours()).padStart(2, '0');
+      const minute = String(d.getMinutes()).padStart(2, '0');
+      return `${hour}:${minute}`;
+    })(),
     rawTime: message?.createdAt || message?.created_at || message?.updatedAt || message?.updated_at || null,
     status: isMine ? "sent" : "read",
     isRecalled: Boolean(message?.isRecalled ?? message?.is_recalled),
+    isPinned: Boolean(message?.isPinned ?? message?.is_pinned),
     replyToMessageId: message?.replyToMessageId || message?.reply_to_message_id || null,
     forwardedFromId: message?.forwardedFromId || message?.forwarded_from_id || null,
     attachments,
     imageAttachments: attachments.filter((attachment: any) => attachment.type === "image"),
     videoAttachments: attachments.filter((attachment: any) => attachment.type === "video"),
     fileAttachments: attachments.filter((attachment: any) => attachment.type === "file"),
+    audioAttachments: attachments.filter((attachment: any) => attachment.type === "audio"),
     reactions: Object.values(groupedReactions),
     poll: message?.poll ?? null,
   };
@@ -236,16 +252,26 @@ export const normalizeConversation = (
     conversation?.createdAt ||
     conversation?.created_at ||
     null;
-  const avatarUrl = formatImageUrl(
-    conversation?.avatarUrl ||
-    conversation?.avatar_url ||
-    otherMember?.avatarUrl ||
-    FALLBACK_AVATAR
-  );
+  const isSelf = type === "direct" && !otherMember;
+  const otherMemberRecord = Array.isArray(conversation?.members)
+    ? conversation.members.find((member: any) => member?.user?.id && member.user.id !== currentUserId)
+    : null;
+  const otherNickname = otherMemberRecord?.nickname || null;
+
+  const avatarUrl = isSelf
+    ? ""
+    : formatImageUrl(
+        conversation?.avatarUrl ||
+        conversation?.avatar_url ||
+        otherMember?.avatarUrl ||
+        FALLBACK_AVATAR
+      );
   const name =
-    conversation?.name ||
-    otherMember?.name ||
-    (type === "group" ? "Nhóm chưa đặt tên" : "Người dùng ẩn danh");
+    (type === "direct" && otherNickname)
+      ? otherNickname
+      : (conversation?.name ||
+         otherMember?.name ||
+         (isSelf ? "Tài liệu của tôi" : (type === "group" ? "Nhóm chưa đặt tên" : "Người dùng ẩn danh")));
 
   return {
     ...conversation,
@@ -260,12 +286,64 @@ export const normalizeConversation = (
     members,
     otherUser: otherMember,
     latestMessage,
-    lastMsg:
-      latestMessage?.content === "No messages yet" || conversation?.last_message?.content === "No messages yet"
-        ? "Chưa có tin nhắn"
-        : (latestMessage?.content ||
-          conversation?.last_message?.content ||
-          "Chưa có tin nhắn"),
+    lastMsg: (() => {
+      if (!latestMessage) return "Chưa có tin nhắn";
+      if (latestMessage.is_recalled || latestMessage.isRecalled) {
+        return "Tin nhắn đã được thu hồi";
+      }
+      if (latestMessage.content && latestMessage.content.startsWith('__system__:')) {
+        const parts = latestMessage.content.split(':');
+        const action = parts[1];
+        const actorMember = members?.find((m: any) =>
+          m.user?.id === latestMessage.sender?.id ||
+          m.user?.uuid === latestMessage.sender?.uuid ||
+          m.userId === latestMessage.sender?.id ||
+          m.userId === latestMessage.sender?.uuid ||
+          m.user?.id === latestMessage.senderId ||
+          m.user?.uuid === latestMessage.senderId ||
+          m.userId === latestMessage.senderId
+        );
+        const actorName = actorMember?.nickname || latestMessage.sender?.name || 'Thành viên';
+        if (action === 'joined') return `${actorName} đã tham gia nhóm`;
+        if (action === 'left') return `${actorName} đã rời nhóm`;
+        if (action === 'added') return `${actorName} đã thêm ${parts[3] || 'thành viên'}`;
+        if (action === 'removed') return `${actorName} đã xóa ${parts[3] || 'thành viên'}`;
+        if (action === 'custom') return parts.slice(2).join(':');
+        if (action === 'nickname-changed') {
+          const targetUuid = parts[2];
+          const newNickname = parts.slice(3).join(':');
+          const targetMember = members?.find((m: any) =>
+            m.user?.uuid === targetUuid ||
+            m.user?.id === targetUuid ||
+            m.userId === targetUuid
+          );
+          const targetName = targetMember?.user?.name || 'thành viên';
+          return newNickname
+            ? `${actorName} đã đặt biệt danh cho ${targetName} là ${newNickname}`
+            : `${actorName} đã gỡ biệt danh của ${targetName}`;
+        }
+      }
+      if (latestMessage.content && latestMessage.content !== "No messages yet") {
+        return latestMessage.content;
+      }
+      const rawAtts = Array.isArray(latestMessage.attachments) ? latestMessage.attachments : [];
+      if (rawAtts.length > 0) {
+        const firstAtt = rawAtts[0];
+        const mime = firstAtt?.mimeType || firstAtt?.mime_type || "";
+        const type = firstAtt?.type || "";
+        if (mime.startsWith("image/") || type === "image") {
+          return "[Hình ảnh]";
+        }
+        if (mime.startsWith("video/") || type === "video") {
+          return "[Video]";
+        }
+        if (mime.startsWith("audio/") || type === "audio") {
+          return "[Tin nhắn thoại]";
+        }
+        return "[Tệp đính kèm]";
+      }
+      return "Chưa có tin nhắn";
+    })(),
     time: formatTimeLabel(latestMessageTime),
     rawTime: latestMessageTime,
     unread: conversation?.unreadCount ?? conversation?.unread_count ?? conversation?.unread ?? 0,
@@ -274,6 +352,9 @@ export const normalizeConversation = (
     commentsRestricted: Boolean(
       conversation?.commentsRestricted ?? conversation?.comments_restricted ?? false,
     ),
+    isPinned: Boolean(conversation?.isPinned ?? conversation?.is_pinned),
+    isMuted: Boolean(conversation?.isMuted ?? conversation?.is_muted),
+    pinOrder: conversation?.pinOrder ?? conversation?.pin_order ?? null,
   };
 };
 
@@ -297,4 +378,22 @@ export const pickUserFromConversation = (
     isGroup: normalized.isGroup,
     members: normalized.members,
   };
+};
+
+export const getMappedBgColor = (bg: string | null | undefined, isDarkMode: boolean, colors?: any) => {
+  if (!bg) return isDarkMode ? (colors?.background || '#121212') : '#F4F5F7';
+  const cleanBg = bg.trim().toLowerCase();
+  if (cleanBg.startsWith('#') || cleanBg.startsWith('rgba') || cleanBg.startsWith('rgb')) {
+    return bg;
+  }
+  if (cleanBg.startsWith('linear-gradient')) {
+    if (cleanBg.includes('#f59e0b') || cleanBg.includes('#ef4444')) return '#FEF3C7'; // Hoàng hôn -> Trà đào
+    if (cleanBg.includes('#3b82f6') || cleanBg.includes('#06b6d4')) return '#E0F2FE'; // Biển xanh -> Xanh ngọc
+    if (cleanBg.includes('#10b981') || cleanBg.includes('#6366f1')) return '#DCFCE7'; // Cực quang -> Bạc hà
+    if (cleanBg.includes('#8b5cf6') || cleanBg.includes('#ec4899')) return '#F3E8FF'; // Tím khói -> Thạch thảo
+    if (cleanBg.includes('#a7f3d0') || cleanBg.includes('#34d399')) return '#DCFCE7'; // Bạc hà -> Bạc hà
+    if (cleanBg.includes('#0f172a') || cleanBg.includes('#1e293b') || cleanBg.includes('#334155')) return '#1F2937'; // Tinh vân -> Xám tối
+    if (cleanBg.includes('#fbcfe8') || cleanBg.includes('#f472b6')) return '#FCE7F3'; // Hồng đào -> Anh đào
+  }
+  return 'transparent';
 };

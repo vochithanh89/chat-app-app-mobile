@@ -100,6 +100,20 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     const currentState = callStateRef.current;
     const callData = activeCallRef.current;
 
+    if (!options.avoidLogging && callData) {
+      if (!callData.isGroup) {
+        if (callData.isCaller && currentState === 'outgoing') {
+          messageAPI.sendMessage(callData.conversationId, { content: '📞 Cuộc gọi nhỡ' }).catch(console.error);
+        } else if (callData.isCaller && currentState === 'connected' && connectedAtRef.current) {
+          const d = Math.floor((Date.now() - connectedAtRef.current) / 1000);
+          const text = `${Math.floor(d / 60).toString().padStart(2, '0')}:${(d % 60).toString().padStart(2, '0')}`;
+          messageAPI.sendMessage(callData.conversationId, {
+            content: `📞 Cuộc gọi ${callData.type === 'video' ? 'video' : 'thoại'} kết thúc (${text})`
+          }).catch(console.error);
+        }
+      }
+    }
+
     closeConnections();
     cleanStreams();
     connectedAtRef.current = null;

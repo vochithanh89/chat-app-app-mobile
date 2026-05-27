@@ -33,8 +33,7 @@
         "android.permission.WAKE_LOCK",
         "android.permission.BLUETOOTH"
       ],
-      "package": "com.quangvinh3010.ChatAppMobile",
-      "usesCleartextTraffic": true
+      "package": "com.quangvinh3010.ChatAppMobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -63,7 +62,23 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone.",
+          "recordAudioAndroid": true,
+          "enableBackgroundPlayback": true
+        }
+      ]
     ]
   }
 }

@@ -92,6 +92,17 @@ const SettingsScreen = () => {
     );
   };
 
+  const handleOpenSelfChat = () => {
+    navigation.navigate("Chat", {
+      user: {
+        id: user?.id || user?.uuid,
+        uuid: user?.uuid || user?.id,
+        name: "Tài liệu của tôi",
+        avatar: "", // Will trigger cloud avatar in ChatScreen
+      }
+    });
+  };
+
   return (
     <SafeAreaView className={`flex-1 ${darkMode ? "bg-gray-900" : "bg-gray-100"}`}>
       <StatusBar barStyle="light-content" backgroundColor="#0068FF" />
@@ -136,6 +147,13 @@ const SettingsScreen = () => {
             icon="person-outline"
             title="Thông tin cá nhân"
             onPress={() => navigation.navigate("Profile")}
+            className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
+          />
+
+          <MenuItemComponent
+            icon="cloud-outline"
+            title="Tài liệu của tôi (Cloud)"
+            onPress={handleOpenSelfChat}
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
           />
 
@@ -190,6 +208,21 @@ const SettingsScreen = () => {
             className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
           />
         </View>
+
+        {/* Section: Admin */}
+        {(user?.isAdmin || user?.is_admin || user?.is_admin === 1 || user?.is_admin === true) && (
+          <View className={`mt-4 mx-3 rounded-2xl overflow-hidden shadow-sm ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+            <View className={`px-4 py-3 border-b ${darkMode ? "border-gray-700" : "border-gray-100"}`}>
+              <Text className={`text-xs font-bold ${darkMode ? "text-gray-400" : "text-gray-500"}`}>QUẢN TRỊ VIÊN</Text>
+            </View>
+            <MenuItemComponent
+              icon="people-outline"
+              title="Quản lý người dùng"
+              onPress={() => navigation.navigate("AdminUsers")}
+              className={darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}
+            />
+          </View>
+        )}
 
         {/* Section: Hỗ trợ và Thông tin */}
         <View className={`mt-4 mx-3 rounded-2xl overflow-hidden shadow-sm ${darkMode ? "bg-gray-800" : "bg-white"}`}>

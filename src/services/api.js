@@ -324,6 +324,15 @@ export const authAPI = {
     return response.data;
   },
 
+  // Xác thực mã OTP đặt lại mật khẩu
+  verifyResetOtp: async (email, otp) => {
+    const response = await api.post("/api/v1/auth/verify-reset-otp", {
+      email,
+      otp,
+    });
+    return response.data;
+  },
+
   // Reset mật khẩu
   resetPassword: async (token, newPassword, confirmPassword) => {
     const response = await api.post("/api/v1/auth/reset-password", {
@@ -376,6 +385,12 @@ export const userAPI = {
   // Lấy thông tin cá nhân
   getProfile: async () => {
     const response = await api.get("/api/v1/user/me");
+    return response.data;
+  },
+
+  // Lấy thống kê hoạt động
+  getStatistics: async () => {
+    const response = await api.get("/api/v1/user/statistics");
     return response.data;
   },
 
@@ -600,6 +615,13 @@ export const conversationAPI = {
     return response.data;
   },
 
+  updateMemberNickname: async (conversationId, userId, nickname) => {
+    const response = await api.put(`/api/v1/conversations/${conversationId}/members/${userId}/nickname`, {
+      nickname: nickname
+    });
+    return response.data;
+  },
+
   // POST /api/v1/conversations/:id/transfer - Chuyển quyền sở hữu
   transferOwnership: async (conversationId, newOwnerId) => {
     const response = await api.post(`/api/v1/conversations/${conversationId}/transfer`, {
@@ -704,6 +726,23 @@ export const conversationAPI = {
     const response = await api.post(`/api/v1/conversations/${conversationId}/join-requests/${requestId}/reject`, {});
     return response.data;
   },
+
+  togglePin: async (conversationId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/pin`, {});
+    return response.data;
+  },
+
+  toggleMute: async (conversationId) => {
+    const response = await api.post(`/api/v1/conversations/${conversationId}/mute`, {});
+    return response.data;
+  },
+
+  updateBackground: async (conversationId, background) => {
+    const response = await api.put(`/api/v1/conversations/${conversationId}/background`, {
+      background: background
+    });
+    return response.data;
+  },
 };
 
 export const aiAPI = {
@@ -766,6 +805,13 @@ export const messageAPI = {
       });
     }
 
+    if (file.durationMs || file.duration_ms) {
+      formData.append("duration_ms", String(file.durationMs || file.duration_ms));
+    }
+    if (file.type) {
+      formData.append("type", file.type);
+    }
+
     const token = await tokenStorage.getItem("accessToken");
     const response = await fetch(`${API_BASE_URL}/api/v1/messages/upload`, {
       method: "POST",
@@ -819,6 +865,32 @@ export const messageAPI = {
     );
     return response.data;
   },
+
+  pinMessage: async (messageId) => {
+    const response = await api.post(`/api/v1/messages/${messageId}/pin`, {});
+    return response.data;
+  },
+
+  unpinMessage: async (messageId) => {
+    const response = await api.delete(`/api/v1/messages/${messageId}/pin`);
+    return response.data;
+  },
+};
+
+export const adminAPI = {
+  listUsers: async (q = "", page = 1, limit = 20) => {
+    const response = await api.get("/api/v1/admin/users", {
+      params: { q, page, limit }
+    });
+    return response.data;
+  },
+
+  updateUserStatus: async (userUuid, status) => {
+    const response = await api.put(`/api/v1/admin/users/${userUuid}/status`, {
+      status
+    });
+    return response.data;
+  }
 };
 
 export default api;

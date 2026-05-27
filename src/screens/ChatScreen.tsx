@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -26,6 +28,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { useAudioRecorder, useAudioPlayer, useAudioPlayerStatus, useAudioRecorderState, RecordingPresets, AudioModule } from "expo-audio";
 import { getSmallAvatar, getMediumAvatar } from "../utils/avatarUtils";
 
 const VideoAttachment = ({ uri }: { uri: string }) => {
@@ -58,9 +61,72 @@ const VideoAttachment = ({ uri }: { uri: string }) => {
   );
 };
 
+const AudioMessageBubble = ({ uri, durationMs, isMine }: { uri: string; durationMs?: number; isMine: boolean }) => {
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
+  
+  const totalDurationSeconds = durationMs ? durationMs / 1000 : (status.duration || 0);
+  const currentTime = status.currentTime || 0;
+  const isPlaying = status.playing;
+
+  const togglePlay = () => {
+    if (isPlaying) {
+      player.pause();
+    } else {
+      if (currentTime >= totalDurationSeconds - 0.1) {
+        player.seekTo(0);
+      }
+      player.play();
+    }
+  };
+
+  const displayTime = isPlaying || currentTime > 0 ? formatTime(currentTime) : formatTime(totalDurationSeconds);
+
+  return (
+    <View style={[
+      styles.audioBubbleContainer, 
+      isMine ? styles.audioBubbleMine : styles.audioBubbleOther
+    ]}>
+      <TouchableOpacity 
+        style={[styles.audioPlayButton, { backgroundColor: isMine ? "white" : ZALO_BLUE }]} 
+        onPress={togglePlay}
+      >
+        <Ionicons 
+          name={isPlaying ? "pause" : "play"} 
+          size={18} 
+          color={isMine ? ZALO_BLUE : "white"} 
+          style={!isPlaying ? { marginLeft: 2 } : null}
+        />
+      </TouchableOpacity>
+
+      <View style={styles.audioBarsContainer}>
+        {[0, 1, 2].map((i) => {
+          let barHeight = [10, 18, 8][i];
+          if (isPlaying) {
+            barHeight = [14, 22, 12][(i + Math.floor(currentTime * 2)) % 3];
+          }
+          return (
+            <View 
+              key={i} 
+              style={[
+                styles.audioBar, 
+                { height: barHeight, backgroundColor: isMine ? "white" : ZALO_BLUE }
+              ]} 
+            />
+          );
+        })}
+      </View>
+
+      <Text style={[styles.audioTimeText, isMine ? styles.textWhite : styles.textBlack]}>
+        {displayTime}
+      </Text>
+    </View>
+  );
+};
+
 // API & Context (Giả định theo project của bạn)
 import { conversationAPI, messageAPI, friendshipAPI } from "../services/api";
-import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromConversation } from "../services/chatMappers";
+import { normalizeConversation, normalizeMessage, normalizeUser, pickUserFromConversation, getMappedBgColor } from "../services/chatMappers";
 import { useAuth } from "../contexts/AuthContext";
 import { useTabBarVisibility } from "../hooks/useTabBarVisibility";
 import { useCall } from "../contexts/CallContext";
@@ -97,6 +163,13 @@ const WINDOW_WIDTH = Dimensions.get("window").width;
 const getConversationStoragePrefix = (value?: string | null) =>
   value ? `chat:options:${value}` : null;
 
+const formatTime = (seconds: number) => {
+  if (!isFinite(seconds) || isNaN(seconds)) return "00:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
 import { useTheme } from "../contexts/ThemeContext";
 
 const ChatScreen = () => {
@@ -124,6 +197,46 @@ const ChatScreen = () => {
   const [conversationId, setConversationId] = useState<string | null>(
     routeConversationId || routeUser?.conversationId || null,
   );
+  const [chatBackground, setChatBackground] = useState<string | null>(null);
+
+  // Voice Recording States
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordDurationSeconds, setRecordDurationSeconds] = useState(0);
+  const recordingTimerRef = useRef<any>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Expo Audio Recording Hook
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder);
+
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
+  }, []);
 
   // Modal/Overlay States
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
@@ -296,6 +409,42 @@ const ChatScreen = () => {
         loadData();
       });
 
+      // Listen for message pinned
+      const unsubPinned = socketService.on('message:pinned', () => {
+        loadData();
+      });
+
+      // Listen for message unpinned
+      const unsubUnpinned = socketService.on('message:unpinned', () => {
+        loadData();
+      });
+
+      // Listen for presence changes in real-time
+      const unsubPresence = socketService.on('presence:changed', ({ userId, isOnline, lastSeenAt }: any) => {
+        setConversation((prev: any) => {
+          if (!prev || prev.type !== 'direct') return prev;
+          const members = prev.members?.map((m: any) => {
+            const mId = m.user?.uuid || m.user?.id || m.userId;
+            if (mId === userId) {
+              return {
+                ...m,
+                user: { ...m.user, isOnline, online: isOnline, lastSeenAt },
+              };
+            }
+            return m;
+          });
+          
+          const otherMember = members.find((member: any) => member?.user?.id && member.user.id !== currentUserId)?.user || null;
+          return { 
+            ...prev, 
+            members,
+            otherUser: otherMember,
+            online: Boolean(otherMember?.isOnline),
+            isOnline: Boolean(otherMember?.isOnline)
+          };
+        });
+      });
+
       return () => {
         clearInterval(interval);
         unsubPollUpdated();
@@ -304,6 +453,9 @@ const ChatScreen = () => {
         unsubReactionAdded();
         unsubReactionRemoved();
         unsubMembersChanged();
+        unsubPinned();
+        unsubUnpinned();
+        unsubPresence();
       };
     }, [loadData, currentUserId])
   );
@@ -311,21 +463,30 @@ const ChatScreen = () => {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      const loadNickname = async () => {
-        const convId = conversation?.id || conversationId || routeConversationId || routeUser?.conversationId;
+      const loadNickname = () => {
         const userId = routeUser?.id || routeUser?.uuid;
-        if (!convId || !userId) {
+        if (!conversation || !userId) {
           if (active) setChatNickname("");
           return;
         }
-        const stored = await AsyncStorage.getItem(`chat:nickname:${convId}:${userId}`);
-        if (active) setChatNickname(stored || "");
+        const targetMember = conversation.members?.find((m: any) =>
+          m.user?.id === userId ||
+          m.user?.uuid === userId ||
+          m.userId === userId
+        );
+        if (active) setChatNickname(targetMember?.nickname || "");
       };
       loadNickname();
       return () => {
         active = false;
       };
-    }, [conversation?.id, conversationId, routeConversationId, routeUser?.conversationId, routeUser?.id, routeUser?.uuid])
+    }, [conversation, routeUser?.id, routeUser?.uuid])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      setChatBackground(conversation?.chatBackground || null);
+    }, [conversation?.chatBackground])
   );
 
   const messageById = useMemo(() => {
@@ -425,6 +586,109 @@ const ChatScreen = () => {
     setShowAttachmentPicker(false);
   };
 
+  const startRecording = async () => {
+    try {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        Alert.alert("Quyền truy cập", "Vui lòng cho phép ứng dụng truy cập Microphone trong cài đặt thiết bị để ghi âm.");
+        return;
+      }
+      
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
+      await recorder.prepareToRecordAsync();
+      await recorder.record();
+      
+      setIsRecording(true);
+      setRecordDurationSeconds(0);
+      
+      recordingTimerRef.current = setInterval(() => {
+        setRecordDurationSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("Start recording error:", error);
+      Alert.alert("Lỗi", "Không thể bắt đầu ghi âm.");
+    }
+  };
+
+  const cancelRecording = async () => {
+    try {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      await recorder.stop();
+      setIsRecording(false);
+      setRecordDurationSeconds(0);
+    } catch (error) {
+      console.error("Cancel recording error:", error);
+      setIsRecording(false);
+    }
+  };
+
+  const stopAndSendRecording = async () => {
+    try {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
+      await recorder.stop();
+      setIsRecording(false);
+      
+      const uri = recorder.uri;
+      const durationMs = recordDurationSeconds * 1000;
+      setRecordDurationSeconds(0);
+      
+      if (!uri) {
+        Alert.alert("Lỗi", "Không tìm thấy tệp ghi âm.");
+        return;
+      }
+
+      setSending(true);
+      const convId = await resolveConversationId();
+      if (!convId) {
+        Alert.alert("Lỗi", "Không thể mở cuộc trò chuyện");
+        return;
+      }
+
+      const voiceAttachment = {
+        id: Math.random().toString(),
+        uri: uri,
+        name: `voice_${Date.now()}.m4a`,
+        mimeType: "audio/m4a",
+        type: "audio" as const,
+        durationMs: durationMs,
+      };
+
+      const uploadResult = await messageAPI.uploadAttachment(voiceAttachment);
+      const attachmentId = uploadResult?.data?.attachment?.id;
+      
+      if (!attachmentId) {
+        throw new Error("Failed to get attachment ID");
+      }
+
+      await messageAPI.sendMessage(convId, {
+        attachment_ids: [attachmentId]
+      });
+
+      const storagePrefix = getConversationStoragePrefix(convId);
+      if (storagePrefix) {
+        await AsyncStorage.removeItem(`${storagePrefix}:clearedAt`);
+      }
+
+      loadData();
+    } catch (error) {
+      console.error("Send recording error:", error);
+      Alert.alert("Lỗi", "Không thể gửi tin nhắn thoại.");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const openForwardModal = async () => {
     const currentConversationId = routeConversationId || conversation?.id || routeUser?.conversationId;
 
@@ -497,6 +761,40 @@ const ChatScreen = () => {
     }
   };
 
+  const handlePinMessage = async () => {
+    const messageId = selectedMessage?.id;
+    if (!messageId) {
+      return;
+    }
+
+    try {
+      await messageAPI.pinMessage(messageId);
+      setShowActions(false);
+      setSelectedMessage(null);
+      await loadData();
+    } catch (error) {
+      console.log("Pin message error:", error);
+      Alert.alert("Lỗi", "Không thể ghim tin nhắn");
+    }
+  };
+
+  const handleUnpinMessage = async () => {
+    const messageId = selectedMessage?.id;
+    if (!messageId) {
+      return;
+    }
+
+    try {
+      await messageAPI.unpinMessage(messageId);
+      setShowActions(false);
+      setSelectedMessage(null);
+      await loadData();
+    } catch (error) {
+      console.log("Unpin message error:", error);
+      Alert.alert("Lỗi", "Không thể bỏ ghim tin nhắn");
+    }
+  };
+
   const handleToggleReaction = async (messageItem: any, emoji: string) => {
     const messageId = messageItem?.id;
     if (!messageId) {
@@ -528,9 +826,55 @@ const ChatScreen = () => {
   const renderMessage = ({ item }: { item: any }) => {
     const isMine = item.user === "me";
     const isGroup = conversation?.isGroup || conversation?.type === 'group';
-    const senderName = item.sender?.name || 'Người dùng';
+    const member = conversation?.members?.find((m: any) =>
+      m.user?.id === item.sender?.id ||
+      m.user?.uuid === item.sender?.uuid ||
+      m.userId === item.sender?.id ||
+      m.userId === item.sender?.uuid
+    );
+    const senderName = member?.nickname || item.sender?.name || 'Người dùng';
     const senderAvatar = item.sender?.avatar || item.sender?.avatarUrl || FALLBACK_AVATAR;
     const hasPoll = !!item.poll;
+
+    const isSystem = typeof item.content === 'string' && item.content.startsWith('__system__:');
+    if (isSystem) {
+      const parts = item.content.split(':');
+      const action = parts[1]; // 'joined', 'left', 'added', 'removed', 'nickname-changed', 'custom'
+      let text = '';
+      if (action === 'joined') {
+        text = `${senderName} đã tham gia nhóm`;
+      } else if (action === 'left') {
+        text = `${senderName} đã rời khỏi nhóm`;
+      } else if (action === 'added') {
+        text = `${senderName} đã thêm ${parts[3] || 'thành viên'} vào nhóm`;
+      } else if (action === 'removed') {
+        text = `${senderName} đã xóa ${parts[3] || 'thành viên'} khỏi nhóm`;
+      } else if (action === 'custom') {
+        text = parts.slice(2).join(':');
+      } else if (action === 'nickname-changed') {
+        const targetUuid = parts[2];
+        const newNickname = parts.slice(3).join(':');
+        const targetMember = conversation?.members?.find((m: any) =>
+          m.user?.uuid === targetUuid ||
+          m.user?.id === targetUuid ||
+          m.userId === targetUuid
+        );
+        const targetName = targetMember?.user?.name || 'thành viên';
+        text = newNickname
+          ? `${senderName} đã đặt biệt danh cho ${targetName} là ${newNickname}`
+          : `${senderName} đã gỡ biệt danh của ${targetName}`;
+      } else {
+        text = item.content;
+      }
+
+      return (
+        <View style={styles.systemMessageContainer}>
+          <View style={styles.systemMessagePill}>
+            <Text style={styles.systemMessageText}>{text}</Text>
+          </View>
+        </View>
+      );
+    }
 
     return (
       <View style={[styles.messageContainer, isMine ? styles.mineAlign : styles.otherAlign]}>
@@ -614,6 +958,20 @@ const ChatScreen = () => {
                         {file.fileName || "File"}
                       </Text>
                     </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+
+              {/* Audio Attachments */}
+              {item.audioAttachments && item.audioAttachments.length > 0 ? (
+                <View style={styles.messageImagesContainer}>
+                  {item.audioAttachments.map((audio: any) => (
+                    <AudioMessageBubble
+                      key={audio.id}
+                      uri={audio.url}
+                      durationMs={audio.durationMs || audio.duration_ms}
+                      isMine={isMine}
+                    />
                   ))}
                 </View>
               ) : null}
@@ -713,18 +1071,34 @@ const ChatScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-        <Image source={{ uri: routeUser?.avatar || FALLBACK_AVATAR }} style={styles.avatar} />
+        {routeUser?.name === "Tài liệu của tôi" ? (
+          <View style={[styles.avatar, { backgroundColor: "#3B82F6", alignItems: 'center', justifyContent: 'center', borderRadius: 20 }]}>
+            <Ionicons name="cloud" size={20} color="white" />
+          </View>
+        ) : (
+          <Image source={{ uri: routeUser?.avatar || FALLBACK_AVATAR }} style={styles.avatar} />
+        )}
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>{chatNickname || routeUser?.name || "Người dùng"}</Text>
-          <Text style={styles.headerSub}>{routeUser?.online ? "Vừa mới truy cập" : "Offline"}</Text>
+          <Text style={styles.headerSub}>
+            {routeUser?.name === "Tài liệu của tôi"
+              ? "Nơi lưu trữ cá nhân"
+              : ((conversation ? conversation.isOnline : (routeUser?.online ?? routeUser?.isOnline ?? false))
+                ? "Trực tuyến"
+                : "Ngoại tuyến")}
+          </Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => handleCall('audio')}>
-            <Ionicons name="call-outline" size={22} color="white" style={{ marginRight: 15 }} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleCall('video')}>
-            <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
-          </TouchableOpacity>
+          {routeUser?.name !== "Tài liệu của tôi" && (
+            <>
+              <TouchableOpacity onPress={() => handleCall('audio')}>
+                <Ionicons name="call-outline" size={22} color="white" style={{ marginRight: 15 }} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleCall('video')}>
+                <Ionicons name="videocam-outline" size={24} color="white" style={{ marginRight: 15 }} />
+              </TouchableOpacity>
+            </>
+          )}
           <TouchableOpacity onPress={() => {
             if (conversation?.isGroup || conversation?.type === 'group') {
               navigation.navigate("GroupOptions", { group: conversation });
@@ -759,29 +1133,110 @@ const ChatScreen = () => {
         </View>
       ) : null}
 
+      {/* Pinned Messages Banner */}
+      {(() => {
+        const pinned = messages.filter((m) => m.isPinned && !m.isRecalled);
+        if (pinned.length === 0) return null;
+        const latestPinned = pinned[0];
+        
+        const getPinnedPreview = (msg: any) => {
+          if (!msg) return "";
+          if (msg.isRecalled) return "Tin nhắn đã thu hồi";
+          if (msg.content) return msg.content;
+          if (msg.imageAttachments && msg.imageAttachments.length > 0) return "[Hình ảnh]";
+          if (msg.videoAttachments && msg.videoAttachments.length > 0) return "[Video]";
+          if (msg.audioAttachments && msg.audioAttachments.length > 0) return "[Tin nhắn thoại]";
+          if (msg.fileAttachments && msg.fileAttachments.length > 0) return "[Tài liệu]";
+          return "[Tệp đính kèm]";
+        };
+
+        const handleScrollToPinned = () => {
+          const index = messages.findIndex((m) => m.id === latestPinned.id);
+          if (index !== -1) {
+            try {
+              listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+            } catch (e) {
+              console.log("Scroll to pinned error:", e);
+            }
+          }
+        };
+
+        const handleUnpinPinned = async () => {
+          try {
+            await messageAPI.unpinMessage(latestPinned.id);
+            loadData();
+          } catch (error) {
+            Alert.alert("Lỗi", "Không thể bỏ ghim tin nhắn.");
+          }
+        };
+
+        return (
+          <View style={[styles.pinnedBanner, isDarkMode ? { backgroundColor: colors.card, borderBottomColor: colors.border } : null]}>
+            <TouchableOpacity style={styles.pinnedBannerContent} onPress={handleScrollToPinned}>
+              <Ionicons name="pin" size={16} color={ZALO_BLUE} style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.pinnedBannerTitle, isDarkMode ? { color: colors.text } : null]} numberOfLines={1}>
+                  Tin nhắn ghim ({pinned.length})
+                </Text>
+                <Text style={[styles.pinnedBannerText, isDarkMode ? { color: colors.textSecondary } : null]} numberOfLines={1}>
+                  {getPinnedPreview(latestPinned)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pinnedBannerClose} onPress={handleUnpinPinned}>
+              <Ionicons name="close" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
+
       {/* Message List */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1 }}
       >
-        {loading ? (
-          <ActivityIndicator style={{ flex: 1 }} color={ZALO_BLUE} />
-        ) : messages.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
-            <Text style={[styles.emptyText, isDarkMode ? { color: colors.textSecondary } : null]}>Chưa có tin nhắn</Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={listRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={item => item.id}
-            inverted // Đảo ngược list để tối ưu chat
-            contentContainerStyle={styles.listContent}
-          />
-        )}
+        {(() => {
+          const isPresetColor = chatBackground && (chatBackground.startsWith('#') || chatBackground.startsWith('linear-gradient'));
+          const isCustomImage = chatBackground && !chatBackground.startsWith('#') && !chatBackground.startsWith('linear-gradient');
+
+          const listContent = loading ? (
+            <ActivityIndicator style={{ flex: 1 }} color={ZALO_BLUE} />
+          ) : messages.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
+              <Text style={[styles.emptyText, isDarkMode ? { color: colors.textSecondary } : null]}>Chưa có tin nhắn</Text>
+            </View>
+          ) : (
+            <FlatList
+              ref={listRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={item => item.id}
+              inverted // Đảo ngược list để tối ưu chat
+              contentContainerStyle={styles.listContent}
+              style={{ flex: 1 }}
+            />
+          );
+
+          if (isCustomImage) {
+            return (
+              <ImageBackground
+                source={{ uri: chatBackground }}
+                style={{ flex: 1 }}
+                resizeMode="cover"
+              >
+                {listContent}
+              </ImageBackground>
+            );
+          } else {
+            return (
+              <View style={{ flex: 1, backgroundColor: getMappedBgColor(chatBackground, isDarkMode, colors) }}>
+                {listContent}
+              </View>
+            );
+          }
+        })()}
 
         {/* Composer */}
         {!canComment ? (
@@ -820,33 +1275,55 @@ const ChatScreen = () => {
               </ScrollView>
             ) : null}
 
-            <View style={styles.inputRow}>
-              <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
-                <Ionicons name="add-circle-outline" size={28} color={isDarkMode ? colors.textSecondary : "#666"} />
-              </TouchableOpacity>
-              {conversation?.isGroup || conversation?.type === 'group' ? (
-                <TouchableOpacity onPress={() => setShowCreatePoll(true)} style={{ marginLeft: 4 }}>
-                  <Ionicons name="bar-chart-outline" size={22} color="#7C3AED" />
+            {isRecording ? (
+              <View style={styles.inputRow}>
+                <View style={styles.recordingIndicatorContainer}>
+                  <Animated.View style={[styles.recordingDot, { opacity: pulseAnim }]} />
+                  <Text style={styles.recordingTimerText}>{formatTime(recordDurationSeconds)}</Text>
+                </View>
+                <TouchableOpacity style={styles.recordingCancelBtn} onPress={cancelRecording}>
+                  <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+                  <Text style={styles.recordingCancelText}>Hủy</Text>
                 </TouchableOpacity>
-              ) : null}
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text }]}
-                placeholder="Tin nhắn"
-                placeholderTextColor={isDarkMode ? "#6B7280" : "#9CA3AF"}
-                multiline
-                value={message}
-                onChangeText={setMessage}
-              />
-              {message.trim().length > 0 || pendingAttachments.length > 0 ? (
-                <TouchableOpacity onPress={handleSend}>
-                  <Ionicons name="send" size={24} color={ZALO_BLUE} />
+                <TouchableOpacity style={styles.recordingSendBtn} onPress={stopAndSendRecording}>
+                  <Ionicons name="send" size={20} color="white" />
+                  <Text style={styles.recordingSendText}>Gửi</Text>
                 </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={() => setShowEmojiPicker(true)}>
-                  <Ionicons name="happy-outline" size={26} color={isDarkMode ? colors.textSecondary : "#666"} />
+              </View>
+            ) : (
+              <View style={styles.inputRow}>
+                <TouchableOpacity onPress={() => setShowAttachmentPicker(true)}>
+                  <Ionicons name="add-circle-outline" size={28} color={isDarkMode ? colors.textSecondary : "#666"} />
                 </TouchableOpacity>
-              )}
-            </View>
+                {conversation?.isGroup || conversation?.type === 'group' ? (
+                  <TouchableOpacity onPress={() => setShowCreatePoll(true)} style={{ marginLeft: 4 }}>
+                    <Ionicons name="bar-chart-outline" size={22} color="#7C3AED" />
+                  </TouchableOpacity>
+                ) : null}
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.inputBackground, color: colors.text }]}
+                  placeholder="Tin nhắn"
+                  placeholderTextColor={isDarkMode ? "#6B7280" : "#9CA3AF"}
+                  multiline
+                  value={message}
+                  onChangeText={setMessage}
+                />
+                {message.trim().length > 0 || pendingAttachments.length > 0 ? (
+                  <TouchableOpacity onPress={handleSend}>
+                    <Ionicons name="send" size={24} color={ZALO_BLUE} />
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity onPress={() => setShowEmojiPicker(true)}>
+                      <Ionicons name="happy-outline" size={26} color={isDarkMode ? colors.textSecondary : "#666"} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={startRecording} style={styles.microphoneBtn}>
+                      <Ionicons name="mic-outline" size={26} color={isDarkMode ? colors.textSecondary : "#666"} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
           </View>
         )}
       </KeyboardAvoidingView>
@@ -869,6 +1346,11 @@ const ChatScreen = () => {
             <View style={styles.actionMenu}>
               <ActionItem icon="arrow-undo-outline" label="Trả lời" onPress={() => { setReplyingTo(selectedMessage); setShowActions(false); }} />
               <ActionItem icon="copy-outline" label="Sao chép" />
+              {selectedMessage && selectedMessage.isPinned ? (
+                <ActionItem icon="pin-outline" label="Bỏ ghim tin nhắn" onPress={handleUnpinMessage} />
+              ) : (
+                <ActionItem icon="pin" label="Ghim tin nhắn" onPress={handlePinMessage} />
+              )}
               <ActionItem icon="share-outline" label="Chuyển tiếp" onPress={openForwardModal} />
               <ActionItem icon="trash-outline" label="Xóa" color="#FF3B30" onPress={handleDeleteMessage} />
             </View>
@@ -1036,6 +1518,26 @@ const ActionItem = ({ icon, label, onPress, color = "#333" }: any) => (
 
 /** --- STYLES --- **/
 const styles = StyleSheet.create({
+  systemMessageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+    width: '100%',
+  },
+  systemMessagePill: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    maxWidth: '95%',
+  },
+  systemMessageText: {
+    color: '#6B7280',
+    fontSize: 11,
+    textAlign: 'center',
+  },
   container: { flex: 1, backgroundColor: "#F4F5F7" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 100 },
   emptyText: { color: "#6B7280", marginTop: 8, fontSize: 14 },
@@ -1262,6 +1764,138 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontStyle: 'italic',
+  },
+  
+  // Audio message styles
+  audioBubbleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    minWidth: 150,
+  },
+  audioBubbleMine: {
+    backgroundColor: ZALO_BLUE,
+  },
+  audioBubbleOther: {
+    backgroundColor: "#F3F4F6",
+  },
+  audioPlayButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  audioBarsContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    height: 24,
+    marginHorizontal: 12,
+    gap: 3,
+  },
+  audioBar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
+  audioTimeText: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginLeft: "auto",
+  },
+  
+  // Recording styles
+  recordingComposer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E5",
+    backgroundColor: "white",
+  },
+  recordingIndicatorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#FF3B30",
+    marginRight: 8,
+  },
+  recordingTimerText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF3B30",
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  recordingCancelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#FFEBEE",
+    marginRight: 10,
+  },
+  recordingCancelText: {
+    color: "#FF3B30",
+    fontWeight: "600",
+    marginLeft: 4,
+    fontSize: 14,
+  },
+  recordingSendBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: ZALO_BLUE,
+  },
+  recordingSendText: {
+    color: "white",
+    fontWeight: "600",
+    marginLeft: 4,
+    fontSize: 14,
+  },
+  microphoneBtn: {
+    padding: 2,
+    marginLeft: 6,
+  },
+  
+  // Pinned Banner styles
+  pinnedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  pinnedBannerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  pinnedBannerTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: ZALO_BLUE,
+  },
+  pinnedBannerText: {
+    fontSize: 13,
+    color: "#4B5563",
+    marginTop: 1,
+  },
+  pinnedBannerClose: {
+    padding: 4,
+    marginLeft: 10,
   },
 });
 

@@ -153,22 +153,7 @@ const LoginScreen = () => {
           fullWidth={true}
         />
 
-        {/* Divider */}
-        <View className="flex-row items-center mb-6">
-          <View className="flex-1 h-px bg-gray-300" />
-          <Text className="px-4 text-gray-500 text-sm">Hoặc tiếp tục với</Text>
-          <View className="flex-1 h-px bg-gray-300" />
-        </View>
 
-        {/* Social Login */}
-        <View className="flex-row justify-center mb-8">
-          <TouchableOpacity className="bg-gray-100 p-3 rounded-xl mr-4">
-            <Ionicons name="logo-google" size={24} color="#4285F4" />
-          </TouchableOpacity>
-          <TouchableOpacity className="bg-gray-100 p-3 rounded-xl">
-            <Ionicons name="logo-github" size={24} color="black" />
-          </TouchableOpacity>
-        </View>
 
         {/* Forgot Password Link */}
         {/* <View className="items-center mb-4">

@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   Text,
@@ -17,10 +18,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api, { conversationAPI, friendshipAPI, messageAPI } from "../services/api";
-import { formatImageUrl, normalizeConversation, normalizeMessage, normalizeUser } from "../services/chatMappers";
+import { formatImageUrl, normalizeConversation, normalizeMessage, normalizeUser, getMappedBgColor } from "../services/chatMappers";
 import { getLargeAvatar, getMediumAvatar } from "../utils/avatarUtils";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import * as ImagePicker from "expo-image-picker";
 
 type FileItem = {
   id: string;
@@ -98,6 +100,18 @@ const openUrl = async (url: string) => {
   }
 };
 
+const BACKGROUND_PRESETS = [
+  { id: 'default', name: 'Mặc định', color: '#F3F4F6' },
+  { id: 'blue', name: 'Xanh ngọc', color: '#E0F2FE' },
+  { id: 'green', name: 'Bạc hà', color: '#DCFCE7' },
+  { id: 'amber', name: 'Trà đào', color: '#FEF3C7' },
+  { id: 'purple', name: 'Thạch thảo', color: '#F3E8FF' },
+  { id: 'pink', name: 'Anh đào', color: '#FCE7F3' },
+  { id: 'red', name: 'Dâu tây', color: '#FEE2E2' },
+  { id: 'grey', name: 'Xám sáng', color: '#F3F4F6' },
+  { id: 'dark', name: 'Xám tối', color: '#1F2937' },
+];
+
 const ChatOptionsScreen = () => {
   const route = useRoute();
   const navigation = useNavigation<any>();
@@ -154,6 +168,8 @@ const ChatOptionsScreen = () => {
   const [showSecurity, setShowSecurity] = useState(true);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [chatBackground, setChatBackground] = useState<string | null>(null);
+  const [showBackgroundModal, setShowBackgroundModal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -171,23 +187,32 @@ const ChatOptionsScreen = () => {
 
   const loadLocalState = useCallback(async () => {
     if (!storagePrefix) return;
-    const [storedNickname, storedMute, storedPin, storedHidden, storedAutoDelete, storedReminders] = await Promise.all([
-      nicknameKey ? AsyncStorage.getItem(nicknameKey) : Promise.resolve(null),
-      AsyncStorage.getItem(`${storagePrefix}:mute`),
-      AsyncStorage.getItem(`${storagePrefix}:pin`),
+    const [storedHidden, storedAutoDelete, storedReminders] = await Promise.all([
       AsyncStorage.getItem(`${storagePrefix}:hidden`),
       AsyncStorage.getItem(`${storagePrefix}:autoDelete`),
       AsyncStorage.getItem(`${storagePrefix}:reminders`),
     ]);
 
-    setNickname(storedNickname || "");
-    setNicknameDraft(storedNickname || normalizedRouteUser.name || "");
-    setMuteNotifications(storedMute === "true");
-    setPinnedConversation(storedPin === "true");
     setHiddenConversation(storedHidden === "true");
     setAutoDeleteValue(storedAutoDelete || "never");
     setReminders(storedReminders ? JSON.parse(storedReminders) : []);
-  }, [nicknameKey, normalizedRouteUser.name, storagePrefix]);
+    setChatBackground(conversation?.chatBackground || null);
+  }, [storagePrefix, conversationId, conversation?.chatBackground]);
+
+  useEffect(() => {
+    if (!conversation) return;
+    const targetUserId = normalizedRouteUser.id || normalizedRouteUser.uuid;
+    const targetMember = conversation.members?.find((m: any) =>
+      m.user?.id === targetUserId ||
+      m.user?.uuid === targetUserId ||
+      m.userId === targetUserId
+    );
+    const resolvedNickname = targetMember?.nickname || "";
+    setNickname(resolvedNickname);
+    setNicknameDraft(resolvedNickname || normalizedRouteUser.name || "");
+    setMuteNotifications(Boolean(conversation.isMuted));
+    setPinnedConversation(Boolean(conversation.isPinned));
+  }, [conversation, normalizedRouteUser.id, normalizedRouteUser.uuid, normalizedRouteUser.name]);
 
   const loadData = useCallback(async () => {
     try {
@@ -328,22 +353,141 @@ const ChatOptionsScreen = () => {
   const groupMembers = conversation?.members || [];
   const targetReportId = isGroup ? conversationId : otherUserId;
 
+  const chatBackgroundLabel = useMemo(() => {
+    if (!chatBackground) return "Mặc định";
+    const preset = BACKGROUND_PRESETS.find((p) => p.color === chatBackground);
+    if (preset) return `Màu ${preset.name}`;
+    if (chatBackground.startsWith('linear-gradient')) return "Hình nền từ Web";
+    return "Hình nền tùy chỉnh";
+  }, [chatBackground]);
+
+  const handleSelectPresetBackground = async (color: string) => {
+    const activeConvId = conversationId || routeConversationId || routeUser?.conversationId;
+    if (!activeConvId) return;
+    try {
+      const finalVal = (color === '#F3F4F6' || color === '') ? '' : color;
+      setChatBackground(finalVal || null);
+
+      await conversationAPI.updateBackground(activeConvId, finalVal);
+
+      setShowBackgroundModal(false);
+      Alert.alert("Thành công", "Đã thay đổi hình nền cuộc trò chuyện.");
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Lỗi", "Không thể lưu hình nền cuộc trò chuyện lên máy chủ.");
+    }
+  };
+
+  const handlePickCustomBackground = async () => {
+    const activeConvId = conversationId || routeConversationId || routeUser?.conversationId;
+    if (!activeConvId) return;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Quyền truy cập", "Vui lòng cho phép truy cập thư viện ảnh để chọn hình nền.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = result.assets[0];
+        const uri = asset.uri;
+        const mimeType = asset.mimeType || asset.type || 'image/jpeg';
+        const fileName = asset.fileName || `bg_${activeConvId}_${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+
+        const fileToUpload = {
+          uri: Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://') ? `file://${uri}` : uri,
+          name: fileName,
+          mimeType: mimeType,
+        };
+        const uploadRes = await messageAPI.uploadAttachment(fileToUpload);
+        const s3Url = uploadRes?.data?.attachment?.url || uploadRes?.attachment?.url;
+
+        if (!s3Url) {
+          throw new Error("Không lấy được URL tải lên");
+        }
+
+        setChatBackground(s3Url);
+        await conversationAPI.updateBackground(activeConvId, s3Url);
+
+        setShowBackgroundModal(false);
+        Alert.alert("Thành công", "Đã thay đổi hình nền cuộc trò chuyện.");
+      }
+    } catch (e: any) {
+      console.error("handlePickCustomBackground error:", e?.message || e);
+      Alert.alert("Lỗi", `Không thể lưu hình nền lên máy chủ. ${e?.message || ''}`);
+    }
+  };
+
   const persistToggle = async (key: string, value: boolean, setter: (value: boolean) => void) => {
     if (!storagePrefix) return;
     setter(value);
     await AsyncStorage.setItem(`${storagePrefix}:${key}`, String(value));
   };
 
-  const saveNickname = async () => {
-    if (!nicknameKey) return;
-    const value = nicknameDraft.trim();
-    if (value) {
-      await AsyncStorage.setItem(nicknameKey, value);
-    } else {
-      await AsyncStorage.removeItem(nicknameKey);
+  const handleToggleMute = async () => {
+    const activeConvId = conversationId || routeConversationId || routeUser?.conversationId;
+    if (!activeConvId) return;
+    try {
+      const res = await conversationAPI.toggleMute(activeConvId);
+      const isMuted = res.isMuted || res.data?.isMuted || false;
+      setMuteNotifications(isMuted);
+      if (conversation) {
+        setConversation({ ...conversation, isMuted });
+      }
+    } catch (error: any) {
+      console.error("Toggle mute error:", error);
+      Alert.alert("Lỗi", "Không thể cập nhật trạng thái thông báo");
     }
-    setNickname(value);
-    setShowNicknameModal(false);
+  };
+
+  const handleTogglePin = async () => {
+    const activeConvId = conversationId || routeConversationId || routeUser?.conversationId;
+    if (!activeConvId) return;
+    try {
+      const res = await conversationAPI.togglePin(activeConvId);
+      const isPinned = res.isPinned || res.data?.isPinned || false;
+      setPinnedConversation(isPinned);
+      if (conversation) {
+        setConversation({ ...conversation, isPinned });
+      }
+    } catch (error: any) {
+      console.error("Toggle pin error:", error);
+      Alert.alert("Lỗi", "Không thể cập nhật trạng thái ghim cuộc trò chuyện");
+    }
+  };
+
+  const saveNickname = async () => {
+    const activeConvId = conversationId || routeConversationId || routeUser?.conversationId;
+    if (!activeConvId) return;
+    const targetUserId = normalizedRouteUser.id || normalizedRouteUser.uuid;
+    if (!targetUserId) return;
+
+    const value = nicknameDraft.trim();
+    try {
+      await conversationAPI.updateMemberNickname(activeConvId, targetUserId, value);
+      
+      // Optimistic state update
+      if (conversation?.members) {
+        const updatedMembers = conversation.members.map((m: any) => {
+          const mUserId = m.user?.id || m.user?.uuid || m.userId;
+          if (mUserId === targetUserId) {
+            return { ...m, nickname: value || null };
+          }
+          return m;
+        });
+        setConversation({ ...conversation, members: updatedMembers });
+      }
+      setNickname(value);
+      setShowNicknameModal(false);
+    } catch (err: any) {
+      console.error("Failed to change nickname:", err);
+      Alert.alert("Lỗi", "Không thể cập nhật biệt danh trên máy chủ");
+    }
   };
 
   const saveAutoDelete = async (value: string) => {
@@ -626,8 +770,8 @@ const ChatOptionsScreen = () => {
             </View>
 
             <View className="mt-5 flex-row flex-wrap">
-              {renderActionButton(muteNotifications ? "notifications-off" : "notifications-outline", muteNotifications ? "Bật thông báo" : "Tắt thông báo", () => persistToggle("mute", !muteNotifications, setMuteNotifications), muteNotifications)}
-              {renderActionButton("pin-outline", pinnedConversation ? "Bỏ ghim" : "Ghim hội thoại", () => persistToggle("pin", !pinnedConversation, setPinnedConversation), pinnedConversation)}
+              {renderActionButton(muteNotifications ? "notifications-off" : "notifications-outline", muteNotifications ? "Bật thông báo" : "Tắt thông báo", handleToggleMute, muteNotifications)}
+              {renderActionButton("pin-outline", pinnedConversation ? "Bỏ ghim" : "Ghim hội thoại", handleTogglePin, pinnedConversation)}
               {renderActionButton("alarm-outline", "Nhắc hẹn", () => setShowReminderModal(true), reminders.length > 0)}
               {isGroup
                 ? renderActionButton("settings-outline", "Quản lý nhóm", () => navigation.navigate("GroupOptions", { group: conversation }), false)
@@ -648,7 +792,7 @@ const ChatOptionsScreen = () => {
                       <View key={member?.id || memberUser.id} className="flex-row items-center py-2">
                         <Image source={{ uri: memberUser.avatarUrl || getMediumAvatar(memberUser.name) }} className="mr-3 h-10 w-10 rounded-full" />
                         <View className="flex-1">
-                          <Text className={`font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{memberUser.name}</Text>
+                          <Text className={`font-medium ${darkMode ? "text-gray-100" : "text-gray-800"}`}>{member.nickname || memberUser.name}</Text>
                           {member?.role && member.role !== "member" ? (
                             <Text className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{member.role === "owner" ? "Trưởng nhóm" : "Phó nhóm"}</Text>
                           ) : null}
@@ -691,6 +835,7 @@ const ChatOptionsScreen = () => {
 
           <View className="mb-2 bg-white">
             {!isGroup ? renderRow("create-outline", "Đổi biệt danh", nickname || "Chưa đặt biệt danh", () => setShowNicknameModal(true)) : null}
+            {renderRow("image-outline", "Hình nền trò chuyện", chatBackgroundLabel, () => setShowBackgroundModal(true))}
             <View className="border-b border-gray-100">
               {renderSectionHeader("Thiết lập bảo mật", null, showSecurity, () => setShowSecurity((value) => !value))}
               {showSecurity ? (
@@ -742,6 +887,83 @@ const ChatOptionsScreen = () => {
                 <Text className="font-medium text-white">Lưu</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showBackgroundModal} transparent animationType="slide" onRequestClose={() => setShowBackgroundModal(false)}>
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="max-h-[80%] rounded-t-3xl bg-white p-5">
+            <View className="mb-4 flex-row items-center justify-between">
+              <Text className="text-lg font-semibold text-gray-900">Đổi hình nền trò chuyện</Text>
+              <TouchableOpacity onPress={() => setShowBackgroundModal(false)}>
+                <Ionicons name="close" size={22} color="#4B5563" />
+              </TouchableOpacity>
+            </View>
+
+            <Text className="mb-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">
+              Chọn màu nền có sẵn
+            </Text>
+            <View className="mb-5 flex-row flex-wrap">
+              {BACKGROUND_PRESETS.map((preset) => {
+                const isSelected = chatBackground === preset.color;
+                return (
+                  <TouchableOpacity
+                    key={preset.id}
+                    className="mb-3 mr-3 items-center"
+                    onPress={() => handleSelectPresetBackground(preset.color)}
+                  >
+                    <View
+                      style={{ backgroundColor: preset.color }}
+                      className={`h-12 w-12 rounded-xl border border-gray-250 items-center justify-center ${
+                        isSelected ? "border-2 border-blue-500 scale-95" : ""
+                      }`}
+                    >
+                      {preset.id === 'default' && (
+                        <Ionicons name="refresh-outline" size={18} color="#4B5563" />
+                      )}
+                    </View>
+                    <Text className="mt-1 text-[10px] text-gray-600 font-medium">{preset.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text className="mb-3 text-sm font-semibold text-gray-500 uppercase tracking-wider">
+              Hình nền cá nhân
+            </Text>
+            {chatBackground && !BACKGROUND_PRESETS.some(p => p.color === chatBackground) ? (
+              <View className="relative h-32 w-full overflow-hidden rounded-xl bg-gray-100 border border-gray-200 justify-center items-center">
+                {chatBackground.startsWith('linear-gradient') ? (
+                  <View style={{ backgroundColor: getMappedBgColor(chatBackground, darkMode, colors) }} className="h-full w-full" />
+                ) : (
+                  <Image source={{ uri: chatBackground }} className="h-full w-full object-cover" />
+                )}
+                <View className="absolute inset-0 bg-black/30 items-center justify-center flex-row gap-3">
+                  <TouchableOpacity
+                    onPress={handlePickCustomBackground}
+                    className="rounded-lg bg-white/20 px-3 py-1.5 border border-white/40"
+                  >
+                    <Text className="text-xs font-semibold text-white">Thay đổi</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleSelectPresetBackground('')}
+                    className="rounded-lg bg-red-500 px-3 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-white">Xóa</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handlePickCustomBackground}
+                className="w-full border border-dashed border-gray-350 bg-gray-50 hover:bg-gray-100 rounded-xl py-6 flex-col items-center justify-center gap-2"
+              >
+                <Ionicons name="cloud-upload-outline" size={24} color="#0068FF" />
+                <Text className="text-sm font-medium text-gray-700">Tải ảnh lên từ thư viện thiết bị</Text>
+                <Text className="text-xs text-gray-400">Hỗ trợ các định dạng ảnh phổ biến</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

@@ -46,7 +46,7 @@ const getResponseData = (response: any) =>
   response?.data?.user || response?.data?.data?.user || response?.data?.data || response?.user || response;
 
 const getInitials = (name?: string) =>
-  (name || "User")
+  (name || "Người dùng")
     .split(" ")
     .filter(Boolean)
     .map((part) => part[0])
@@ -439,9 +439,12 @@ const ProfileScreen = () => {
       avatarPreviewUri ||
       formatImageUrl(authUser?.avatarUrl || authUser?.avatar_url || authUser?.avatar);
     const createdAt = authUser?.createdAt || authUser?.created_at;
-    const memberSince = createdAt
-      ? new Date(createdAt).toLocaleDateString("vi-VN", { month: "long", year: "numeric" })
-      : "Không rõ";
+    const memberSince = (() => {
+      if (!createdAt) return "Không rõ";
+      const d = new Date(createdAt);
+      if (isNaN(d.getTime())) return "Không rõ";
+      return `tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`;
+    })();
 
     return (
       <>

@@ -24,6 +24,8 @@
     "axios": "^1.14.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "54",
+    "expo-audio": "~1.1.1",
+    "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.20",
     "expo-document-picker": "~14.0.8",

@@ -67,6 +67,18 @@ const AvatarComponent: React.FC<AvatarProps> = ({
   };
 
   const renderAvatar = () => {
+    if (name === "Tài liệu của tôi") {
+      const iconSize = size === "small" ? 16 : size === "medium" ? 22 : size === "large" ? 28 : 34;
+      return (
+        <View className={`
+          ${getInnerSizeStyles()} rounded-full bg-blue-500
+          items-center justify-center
+        `}>
+          <Ionicons name="cloud" size={iconSize} color="white" />
+        </View>
+      );
+    }
+
     if (source) {
       return (
         <Image
