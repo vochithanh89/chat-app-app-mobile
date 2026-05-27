@@ -68,6 +68,12 @@ const tokenStorage = {
 };
 
 const resolveApiBaseUrl = () => {
+  // 1. Khi build APK/Production (__DEV__ = false), luôn dùng API thật (Render)
+  if (!__DEV__) {
+    return (process.env.EXPO_PUBLIC_PROD_API_URL || "https://chat-app-backend-it5u.onrender.com").trim();
+  }
+
+  // 2. Khi chạy code test ở local (__DEV__ = true), dùng cấu hình nội bộ
   const envUrl = (process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
   if (envUrl) {
     return envUrl;
