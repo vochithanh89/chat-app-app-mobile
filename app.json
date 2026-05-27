@@ -31,23 +31,19 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK",
-        "android.permission.BLUETOOTH",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.CAMERA",
-        "android.permission.INTERNET",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.WAKE_LOCK",
         "android.permission.BLUETOOTH"
       ],
-      "package": "com.quangvinh3010.ChatAppMobile"
+      "package": "com.quangvinh3010.ChatAppMobile",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiBaseUrl": "http://192.168.1.116:3333"
+      "apiBaseUrl": "http://192.168.1.116:3333",
+      "eas": {
+        "projectId": "b9fcac0c-9954-4497-8acb-8de1e9941aa5"
+      }
     },
     "plugins": [
       "@react-native-community/datetimepicker",
@@ -66,7 +62,8 @@
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
