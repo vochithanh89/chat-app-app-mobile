@@ -102,7 +102,7 @@ const LoginScreen = () => {
 
           {/* Password Input */}
           <View className="mb-2">
-            <Text className="text-gray-700 mb-2 font-medium">Password</Text>
+            <Text className="text-gray-700 mb-2 font-medium">Mật khẩu</Text>
             <View className="bg-gray-50 rounded-xl px-4 py-3 flex-row items-center border border-gray-200">
               <Ionicons name="lock-closed" size={20} color="#9CA3AF" className="mr-3" />
               <TextInput
