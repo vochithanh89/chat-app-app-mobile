@@ -308,6 +308,9 @@ export const normalizeConversation = (
         if (action === 'left') return `${actorName} đã rời nhóm`;
         if (action === 'added') return `${actorName} đã thêm ${parts[3] || 'thành viên'}`;
         if (action === 'removed') return `${actorName} đã xóa ${parts[3] || 'thành viên'}`;
+        if (action === 'group-name-changed') return `${actorName} đã đổi tên nhóm thành ${parts.slice(2).join(':')}`;
+        if (action === 'group-avatar-changed') return `${actorName} đã đổi ảnh đại diện nhóm`;
+        if (action === 'group-bg-changed') return `${actorName} đã đổi ảnh nền cuộc trò chuyện`;
         if (action === 'custom') return parts.slice(2).join(':');
         if (action === 'nickname-changed') {
           const targetUuid = parts[2];

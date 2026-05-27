@@ -75,8 +75,11 @@ const HomeScreen = () => {
         const response = await conversationAPI.getConversations();
         const rawConversations =
           response?.data?.conversations || response?.conversations || [];
-        const normalizedConversations = Array.isArray(rawConversations)
-          ? rawConversations.map((item) => normalizeConversation(item, currentUserId))
+        const filteredRawConversations = Array.isArray(rawConversations)
+          ? rawConversations.filter((c: any) => !(c.type === 'direct' && c.members?.some((m: any) => m.user?.email === 'ai-bot@system.local' || m.email === 'ai-bot@system.local')))
+          : [];
+        const normalizedConversations = Array.isArray(filteredRawConversations)
+          ? filteredRawConversations.map((item) => normalizeConversation(item, currentUserId))
           : [];
 
         const decoratedConversations = await Promise.all(

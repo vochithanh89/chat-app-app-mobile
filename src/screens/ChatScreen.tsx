@@ -849,6 +849,12 @@ const ChatScreen = () => {
         text = `${senderName} đã thêm ${parts[3] || 'thành viên'} vào nhóm`;
       } else if (action === 'removed') {
         text = `${senderName} đã xóa ${parts[3] || 'thành viên'} khỏi nhóm`;
+      } else if (action === 'group-name-changed') {
+        text = `${senderName} đã đổi tên nhóm thành ${parts.slice(2).join(':')}`;
+      } else if (action === 'group-avatar-changed') {
+        text = `${senderName} đã đổi ảnh đại diện nhóm`;
+      } else if (action === 'group-bg-changed') {
+        text = `${senderName} đã đổi ảnh nền cuộc trò chuyện`;
       } else if (action === 'custom') {
         text = parts.slice(2).join(':');
       } else if (action === 'nickname-changed') {
