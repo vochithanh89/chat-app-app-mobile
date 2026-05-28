@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -72,7 +72,11 @@ const LoginScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <ScrollView className="flex-1 px-6">
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
         {/* Logo and Welcome */}
         <View className="items-center mt-12 mb-8">
           <View className="w-24 h-24 bg-blue-500 rounded-2xl justify-center items-center mb-6">
@@ -177,6 +181,7 @@ const LoginScreen = () => {
           </Text>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

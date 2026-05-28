@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Modal } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Modal, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -126,7 +126,11 @@ const RegisterScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <ScrollView className="flex-1 px-6">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
         <View className="mb-8 mt-12 items-center">
           <View className="mb-6 h-24 w-24 items-center justify-center rounded-2xl bg-blue-500">
             <Ionicons name="person-add" size={40} color="white" />
@@ -276,6 +280,7 @@ const RegisterScreen = () => {
           </Text>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Terms Modal */}
       <Modal
