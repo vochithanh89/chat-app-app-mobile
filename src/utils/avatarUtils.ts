@@ -2,15 +2,15 @@
 export const getAvatarFromName = (name: string, size: number = 120) => {
   if (!name) return `https://ui-avatars.com/api/?name=USER&size=${size}&background=0068FF&color=fff&bold=true`;
   
-  // Get initials from name
-  const initials = name
-    .split(' ')
-    .filter(word => word.length > 0)
-    .map(word => word.charAt(0).toUpperCase())
-    .slice(0, 2) // Take max 2 letters
-    .join('');
+  // Get first letter of first word and first letter of last word
+  const words = name.trim().split(/\s+/).filter(w => w.length > 0);
+  let text = 'U';
+  if (words.length === 1) {
+    text = words[0].charAt(0).toUpperCase();
+  } else if (words.length > 1) {
+    text = words[0].charAt(0).toUpperCase() + words[words.length - 1].charAt(0).toUpperCase();
+  }
   
-  const text = initials || 'USER';
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(text)}&size=${size}&background=0068FF&color=fff&bold=true`;
 };
 

@@ -1,10 +1,14 @@
 import { API_BASE_URL } from "./api";
+import { getAvatarFromName } from "../utils/avatarUtils";
 
 const FALLBACK_AVATAR =
   "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face";
 
-export const formatImageUrl = (url?: string | null) => {
-  if (!url) return FALLBACK_AVATAR;
+export const formatImageUrl = (url?: string | null, fallbackName?: string) => {
+  if (!url) {
+    if (fallbackName) return getAvatarFromName(fallbackName);
+    return FALLBACK_AVATAR;
+  }
 
   // Replace machine-local backend URLs with the active API host for web/mobile.
   if (/^https?:\/\//i.test(url)) {
@@ -75,7 +79,6 @@ export const formatTimeLabel = (value?: string | null) => {
 
 export const normalizeUser = (user: any = {}) => {
   const id = user?.uuid || user?.id || null;
-  const avatarUrl = formatImageUrl(user?.avatarUrl || user?.avatar_url || user?.avatar);
   const isOnline = Boolean(
     user?.isOnline ?? user?.is_online ?? user?.online ?? false,
   );
@@ -90,6 +93,8 @@ export const normalizeUser = (user: any = {}) => {
   else if (user?.first_name && user?.last_name) name = `${user.first_name} ${user.last_name}`;
   else if (user?.username) name = user.username;
   else if (user?.email) name = user.email.split('@')[0];
+
+  const avatarUrl = formatImageUrl(user?.avatarUrl || user?.avatar_url || user?.avatar, name);
 
   return {
     ...user,
@@ -264,7 +269,8 @@ export const normalizeConversation = (
         conversation?.avatarUrl ||
         conversation?.avatar_url ||
         otherMember?.avatarUrl ||
-        FALLBACK_AVATAR
+        null,
+        name
       );
   const name =
     (type === "direct" && otherNickname)
