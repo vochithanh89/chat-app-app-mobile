@@ -150,7 +150,7 @@ interface PendingAttachment {
   name: string;
   mimeType: string;
   size?: number;
-  type: "image" | "video" | "file";
+  type: "image" | "video" | "document" | "file";
   file?: any;
 }
 
@@ -574,7 +574,7 @@ const ChatScreen = () => {
           uri: a.uri,
           name: a.name || "document.pdf",
           mimeType: a.mimeType || "application/octet-stream",
-          type: "file",
+          type: "document",
           size: a.size,
           file: (a as any).file || null
         }));
@@ -1269,7 +1269,14 @@ const ChatScreen = () => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pendingAttachmentsContainer}>
                 {pendingAttachments.map(item => (
                   <View key={item.id} style={styles.pendingAttachmentItem}>
-                    <Image source={{ uri: item.uri }} style={styles.pendingAttachmentImage} />
+                    {item.type === 'document' || item.type === 'file' ? (
+                      <View style={[styles.pendingAttachmentImage, { backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' }]}>
+                        <Ionicons name="document-text" size={28} color="#6B7280" />
+                        <Text numberOfLines={1} style={{ fontSize: 10, color: '#4B5563', paddingHorizontal: 4, marginTop: 4 }}>{item.name}</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: item.uri }} style={styles.pendingAttachmentImage} />
+                    )}
                     <TouchableOpacity
                       style={styles.pendingAttachmentRemove}
                       onPress={() => setPendingAttachments(prev => prev.filter(p => p.id !== item.id))}
