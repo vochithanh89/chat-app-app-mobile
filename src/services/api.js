@@ -427,6 +427,15 @@ export const userAPI = {
     return response.data;
   },
 
+  // Đăng ký Device Token cho Push Notification
+  registerDeviceToken: async (token, platform) => {
+    const response = await api.post("/api/v1/users/device-token", {
+      token,
+      platform
+    });
+    return response.data;
+  },
+
   // Tải lên ảnh đại diện
   uploadAvatar: async (imageInput) => {
     const formData = new FormData();

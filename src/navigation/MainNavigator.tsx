@@ -21,6 +21,9 @@ import AdminUsersScreen from "../screens/AdminUsersScreen";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../contexts/AuthContext";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import * as Notifications from 'expo-notifications';
+import { socketService } from '../services/socketService';
 
 // Import AuthenticatedMainTabs
 import AuthenticatedMainTabs from './AuthenticatedMainTabs';
@@ -30,7 +33,28 @@ const Stack = createStackNavigator();
 
 // AuthWrapper component để kiểm tra authentication state
 const AuthWrapper = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
+  usePushNotifications(); // Kích hoạt đăng ký token và lắng nghe thông báo
+
+  // Hiển thị Local Notification như một fallback khi chạy trên Expo Go
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    const unsub = socketService.on('message:new', (msgData) => {
+      const senderId = msgData?.sender_id || msgData?.sender?.id || msgData?.sender?.uuid;
+      if (senderId && String(senderId) !== String(user.id)) {
+         Notifications.scheduleNotificationAsync({
+           content: {
+             title: msgData?.sender?.name || 'Tin nhắn mới',
+             body: msgData?.content || (msgData?.attachments?.length ? 'Đã gửi một tệp đính kèm' : 'Bạn có một tin nhắn mới'),
+           },
+           trigger: null, // Hiển thị ngay lập tức
+         });
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [isAuthenticated, user?.id]);
 
   // Chỉ hiển thị loading khi thực sự đang loading (không phải infinite loop)
   if (loading && !isAuthenticated) {

@@ -5,6 +5,7 @@ import { useCall } from '../contexts/CallContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { formatImageUrl } from '../services/chatMappers';
+import { useAudioPlayer } from 'expo-audio';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,12 +19,26 @@ const CallOverlay = () => {
   const { user: currentUser } = useAuth();
   const myAvatar = formatImageUrl(currentUser?.avatarUrl || currentUser?.avatar_url || currentUser?.avatar);
 
+  // Nhạc chuông cuộc gọi
+  const ringtone = useAudioPlayer(require('../../assets/ringtone.wav'));
+
   // Call timer
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (callState !== 'connected' && callState !== 'group-connected') { setElapsed(0); return; }
     const interval = setInterval(() => setElapsed(prev => prev + 1), 1000);
     return () => clearInterval(interval);
+  }, [callState]);
+
+  // Xử lý phát nhạc chuông
+  useEffect(() => {
+    if (callState === 'incoming') {
+      ringtone.loop = true;
+      ringtone.play();
+    } else {
+      ringtone.pause();
+      ringtone.seekTo(0);
+    }
   }, [callState]);
 
   const formatTime = (s: number) => {

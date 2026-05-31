@@ -162,13 +162,29 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
     return () => clearTimeout(timeout);
   }, [callState]);
 
+  const getIceServers = () => {
+    const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+    const turnUrl = process.env.EXPO_PUBLIC_TURN_URL || 'turn:openrelay.metered.ca:80';
+    const turnUsername = process.env.EXPO_PUBLIC_TURN_USERNAME || 'openrelayproject';
+    const turnCredential = process.env.EXPO_PUBLIC_TURN_CREDENTIAL || 'openrelayproject';
+    
+    if (turnUrl && turnUsername && turnCredential) {
+      servers.push({
+        urls: turnUrl,
+        username: turnUsername,
+        credential: turnCredential
+      });
+    }
+    return servers;
+  };
+
   const initPeerConnection = (otherUserId: string, conversationId: string) => {
     if (!RTCPeerConnection) {
       console.warn(`RTCPeerConnection is not available on ${Platform.OS}`);
       return null;
     }
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const pc = new RTCPeerConnection({ iceServers: getIceServers() });
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track: any) => pc.addTrack(track, localStreamRef.current!));
     }
@@ -323,7 +339,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const pc = new RTCPeerConnection({ iceServers: getIceServers() });
     peerConnectionsRef.current[targetUserId] = pc;
     groupIceQueuesRef.current[targetUserId] = [];
     fetchParticipantProfile(targetUserId);
